@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -49,39 +48,11 @@ func probeBinding(root, name, displayName string) integrationStatus {
 	return integrationStatus{Name: displayName, Status: "ok", Detail: host}
 }
 
-// probeNATS checks whether the NATS server referenced by NATS_URL is reachable.
-func probeNATS() integrationStatus {
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		return integrationStatus{Name: "NATS", Status: "not_configured"}
-	}
-	u, err := url.Parse(natsURL)
-	if err != nil {
-		return integrationStatus{Name: "NATS", Status: "unavailable", Detail: "invalid URL"}
-	}
-	host := u.Hostname()
-	port := u.Port()
-	if port == "" {
-		port = "4222"
-	}
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 3*time.Second)
-	if err != nil {
-		return integrationStatus{Name: "NATS", Status: "starting", Detail: "service binding ready, waiting for service"}
-	}
-	_ = conn.Close()
-	detail := host
-	if stream := os.Getenv("NATS_STREAM"); stream != "" {
-		detail += " (stream: " + stream + ")"
-	}
-	return integrationStatus{Name: "NATS", Status: "ok", Detail: detail}
-}
-
 func checkIntegrations() []integrationStatus {
 	root := envOrDefault("SERVICE_BINDING_ROOT", "/bindings")
 	return []integrationStatus{
 		probeBinding(root, "sql", "PostgreSQL"),
 		probeBinding(root, "cache", "Redis"),
-		probeNATS(),
 	}
 }
 
