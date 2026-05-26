@@ -294,9 +294,10 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 
 	// When a non-XApi resource is added, re-render the XApi (if present) so
 	// it picks up fresh nosqlRef/objectStorageRef wiring.
+	// NOTE: do not pass a file list — updateGuestApiRefs fetches its own fresh
+	// listDir so that concurrent creates don't clobber each other's refs.
 	if req.Kind != "XApi" {
-		allFiles := append(existingFileNames, resourceName+".yaml")
-		a.updateGuestApiRefs(ctx, workspaceName, wsSlot, allFiles)
+		a.updateGuestApiRefs(ctx, workspaceName, wsSlot)
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -357,12 +358,24 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 
 // updateGuestApiRefs re-renders the XApi in a guest workspace whenever a
 // sibling resource is added, preserving the existing withCache/withSql state.
-func (a *app) updateGuestApiRefs(ctx context.Context, workspace, slot string, fileNames []string) {
+// It fetches a fresh file list from GitHub rather than accepting one from the
+// caller — this prevents concurrent creates from clobbering each other's refs
+// (each caller would otherwise pass a stale snapshot missing concurrent commits).
+func (a *app) updateGuestApiRefs(ctx context.Context, workspace, slot string) {
+	entries, err := a.gh.listDir(ctx, workspace)
+	if err != nil {
+		slog.Warn("update guest api refs: list dir", "workspace", workspace, "err", err)
+		return
+	}
+	fileNames := make([]string, 0, len(entries))
 	var apiName string
-	for _, f := range fileNames {
-		if strings.HasPrefix(f, "xapi-") && strings.HasSuffix(f, ".yaml") {
-			apiName = strings.TrimSuffix(f, ".yaml")
-			break
+	for _, e := range entries {
+		if e.Type != "file" {
+			continue
+		}
+		fileNames = append(fileNames, e.Name)
+		if strings.HasPrefix(e.Name, "xapi-") && strings.HasSuffix(e.Name, ".yaml") {
+			apiName = strings.TrimSuffix(e.Name, ".yaml")
 		}
 	}
 	if apiName == "" {
