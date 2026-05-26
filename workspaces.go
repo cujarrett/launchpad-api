@@ -251,10 +251,10 @@ func (a *app) doArgoSyncPatch(workspace string) {
 	})
 }
 
-// fetchGuestExpiry reads a guest workspace's meta.yaml and returns the expiry time.
+// fetchGuestExpiry reads a guest workspace's guest.yaml and returns the expiry time.
 // Returns nil on any error so the workspace is still listed without expiry data.
 func (a *app) fetchGuestExpiry(ctx context.Context, workspace string) *time.Time {
-	content, err := a.gh.fileContent(ctx, workspace+"/meta.yaml")
+	content, err := a.gh.fileContent(ctx, workspace+"/guest.yaml")
 	if err != nil {
 		return nil
 	}

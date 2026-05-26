@@ -71,7 +71,7 @@ var guestWords2 = []string{
 }
 
 // guestSlots are the fixed DNS slots — each maps to a pre-configured public hostname.
-// Slots are assigned at workspace creation time and stored in meta.yaml.
+// Slots are assigned at workspace creation time and stored in guest.yaml.
 var guestSlots = []string{
 	"demo1",
 	"demo2",
@@ -155,7 +155,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "failed to create workspace", http.StatusInternalServerError)
 		return
 	}
-	metaPath := fmt.Sprintf("%s/meta.yaml", fullName)
+	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
 	if err := a.gh.upsertFile(ctx, metaPath, "feat: create guest meta "+fullName, metaYAML); err != nil {
 		slog.Error("create guest meta", "workspace", fullName, "err", err)
 		http.Error(w, "failed to create workspace metadata", http.StatusInternalServerError)
@@ -237,7 +237,7 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 	// Count only resource files (exclude namespace.yaml and meta.yaml).
 	resourceCount := 0
 	for _, e := range entries {
-		if e.Name != "namespace.yaml" && e.Name != "meta.yaml" {
+		if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
 			resourceCount++
 		}
 	}
@@ -527,7 +527,7 @@ func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, er
 			continue
 		}
 
-		metaContent, err := a.gh.fileContent(ctx, e.Name+"/meta.yaml")
+		metaContent, err := a.gh.fileContent(ctx, e.Name+"/guest.yaml")
 		if err != nil {
 			slog.Warn("load guest meta", "workspace", e.Name, "err", err)
 			continue
