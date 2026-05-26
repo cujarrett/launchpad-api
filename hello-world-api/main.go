@@ -16,7 +16,7 @@ import (
 
 type integrationStatus struct {
 	Name   string `json:"name"`
-	Status string `json:"status"` // "ok", "unavailable", or "not_configured"
+	Status string `json:"status"` // "ok", "starting", or "not_configured"
 	Detail string `json:"detail,omitempty"`
 }
 
@@ -48,11 +48,25 @@ func probeBinding(root, name, displayName string) integrationStatus {
 	return integrationStatus{Name: displayName, Status: "ok", Detail: host}
 }
 
+// probeCloudBinding checks a cloud service binding (DynamoDB, S3, etc.) that
+// has no TCP host. The XApi composition's init containers already block the app
+// container until the "type" sentinel file is written, so this will always be
+// "ok" (wired) or "not_configured" (not wired) — never "starting".
+func probeCloudBinding(root, name, displayName string) integrationStatus {
+	_, err := os.ReadFile(filepath.Join(root, name, "type"))
+	if err != nil {
+		return integrationStatus{Name: displayName, Status: "not_configured"}
+	}
+	return integrationStatus{Name: displayName, Status: "ok"}
+}
+
 func checkIntegrations() []integrationStatus {
 	root := envOrDefault("SERVICE_BINDING_ROOT", "/bindings")
 	return []integrationStatus{
 		probeBinding(root, "sql", "PostgreSQL"),
 		probeBinding(root, "cache", "Redis"),
+		probeCloudBinding(root, "nosql", "NoSQL Database"),
+		probeCloudBinding(root, "object-storage", "Object Storage"),
 	}
 }
 
@@ -64,6 +78,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -82,10 +97,14 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		integrations := checkIntegrations()
 		ready := true
+		var wired []integrationStatus
 		for _, i := range integrations {
-			if i.Status != "ok" && i.Status != "not_configured" {
+			if i.Status == "not_configured" {
+				continue
+			}
+			wired = append(wired, i)
+			if i.Status != "ok" {
 				ready = false
-				break
 			}
 		}
 		json.NewEncoder(w).Encode(struct { //nolint:errcheck
@@ -96,10 +115,10 @@ func main() {
 			Integrations []integrationStatus `json:"integrations"`
 		}{
 			Message:      "Hello from the Launchpad sandbox!",
-			Workspace:    envOrDefault("NAMESPACE", "guest"),
+			Workspace:    podNamespace(),
 			Timestamp:    time.Now().UTC().Format(time.RFC3339),
 			Ready:        ready,
-			Integrations: integrations,
+			Integrations: wired,
 		})
 	})
 
@@ -132,4 +151,12 @@ func envOrDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func podNamespace() string {
+	b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return "guest"
+	}
+	return strings.TrimSpace(string(b))
 }
