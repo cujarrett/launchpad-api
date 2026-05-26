@@ -101,6 +101,9 @@ spec:
     cache:
       enabled: true
 {{- end }}
+{{- if .Params.readinessCheckPath }}
+    readinessCheckPath: {{ .Params.readinessCheckPath }}
+{{- end }}
 `
 
 const xsqlTemplate = `apiVersion: platform.local.lab/v1alpha1

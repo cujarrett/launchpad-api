@@ -321,6 +321,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		}
 		p["host"] = fmt.Sprintf("%s-api.mattjarrett.dev", slot)
 		p["tlsIssuer"] = "letsencrypt-prod"
+		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
 			// SQL is opt-in — only wire when the user explicitly requested it.

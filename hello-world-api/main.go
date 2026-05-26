@@ -43,7 +43,7 @@ func probeBinding(root, name, displayName string) integrationStatus {
 
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 3*time.Second)
 	if err != nil {
-		return integrationStatus{Name: displayName, Status: "unavailable", Detail: "unreachable"}
+		return integrationStatus{Name: displayName, Status: "starting", Detail: "service binding ready, waiting for service"}
 	}
 	_ = conn.Close()
 	return integrationStatus{Name: displayName, Status: "ok", Detail: host}
@@ -66,7 +66,7 @@ func probeNATS() integrationStatus {
 	}
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 3*time.Second)
 	if err != nil {
-		return integrationStatus{Name: "NATS", Status: "unavailable", Detail: "unreachable"}
+		return integrationStatus{Name: "NATS", Status: "starting", Detail: "service binding ready, waiting for service"}
 	}
 	_ = conn.Close()
 	detail := host
@@ -96,19 +96,39 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		for _, i := range checkIntegrations() {
+			if i.Status != "ok" && i.Status != "not_configured" {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
+		integrations := checkIntegrations()
+		ready := true
+		for _, i := range integrations {
+			if i.Status != "ok" && i.Status != "not_configured" {
+				ready = false
+				break
+			}
+		}
 		json.NewEncoder(w).Encode(struct { //nolint:errcheck
 			Message      string              `json:"message"`
 			Workspace    string              `json:"workspace"`
 			Timestamp    string              `json:"timestamp"`
+			Ready        bool                `json:"ready"`
 			Integrations []integrationStatus `json:"integrations"`
 		}{
 			Message:      "Hello from the Launchpad sandbox!",
 			Workspace:    envOrDefault("NAMESPACE", "guest"),
 			Timestamp:    time.Now().UTC().Format(time.RFC3339),
-			Integrations: checkIntegrations(),
+			Ready:        ready,
+			Integrations: integrations,
 		})
 	})
 
