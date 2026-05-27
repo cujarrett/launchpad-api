@@ -57,6 +57,9 @@ spec:
     host: {{ .Params.host }}
     tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" }}
     replicas: {{ or .Params.replicas 1 }}
+{{- if .Params.contentSecurityPolicy }}
+    contentSecurityPolicy: {{ .Params.contentSecurityPolicy }}
+{{- end }}
 `
 
 const xapiTemplate = `apiVersion: platform.local.lab/v1alpha1

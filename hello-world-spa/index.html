@@ -79,6 +79,12 @@
       color: var(--purple);
     }
 
+    .launched-at {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
     /* ── Cards grid ── */
     .grid {
       display: grid;
@@ -242,18 +248,19 @@
     <h1>Hello from Launchpad</h1>
     <p>Live integration status for your workspace</p>
     <span class="workspace-badge" id="workspace-name">loading…</span>
+    <p class="launched-at" id="launched-at"></p>
   </header>
 
   <div class="error-banner" id="error-banner"></div>
 
   <div class="grid" id="grid"></div>
 
-  <div class="api-panel">
+  <div class="api-panel" id="api-panel" style="display:none">
     <span class="api-label">API</span>
     <a id="api-link" href="#" target="_blank" rel="noopener noreferrer">—</a>
   </div>
 
-  <p class="status-line" id="status-line">polling…</p>
+  <p class="status-line" id="status-line"></p>
 
   <div class="built-with">
     🚀 Built in minutes with <a href="https://launchpad.mattjarrett.dev" target="_blank" rel="noopener noreferrer">Launchpad</a>
@@ -263,6 +270,17 @@
     const hostname = window.location.hostname
     const apiBase = hostname.replace(/^(demo\d+)\./, '$1-api.')
     const apiURL = `https://${apiBase}/`
+
+    // Show workspace slug immediately from hostname, no API needed
+    const slug = hostname.split('.')[0]
+    document.getElementById('workspace-name').textContent = slug
+
+    // Persist launch timestamp in localStorage so it survives page refreshes
+    const tsKey = 'launched:' + hostname
+    if (!localStorage.getItem(tsKey)) localStorage.setItem(tsKey, Date.now())
+    const launchedMs = parseInt(localStorage.getItem(tsKey), 10)
+    document.getElementById('launched-at').textContent =
+      'Launched ' + new Date(launchedMs).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
     const apiLink = document.getElementById('api-link')
     apiLink.href = apiURL
@@ -283,6 +301,8 @@
       `).join('')
     }
 
+    let apiVisible = false
+
     async function poll() {
       const banner = document.getElementById('error-banner')
       const statusLine = document.getElementById('status-line')
@@ -291,13 +311,21 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         banner.style.display = 'none'
-        document.getElementById('workspace-name').textContent = data.workspace ?? hostname
+        if (data.workspace) document.getElementById('workspace-name').textContent = data.workspace
         renderGrid(data.integrations ?? [])
-        statusLine.textContent = `Last updated ${new Date(data.timestamp).toLocaleTimeString()}`
+        statusLine.textContent = `Updated ${new Date(data.timestamp).toLocaleTimeString()}`
+        if (!apiVisible) {
+          document.getElementById('api-panel').style.display = ''
+          apiVisible = true
+        }
       } catch (err) {
-        banner.textContent = `Could not reach API: ${err.message}`
-        banner.style.display = 'block'
-        statusLine.textContent = 'Retrying in 5s…'
+        // Network error = no API in this workspace; HTTP errors surface the status
+        const noApi = err.message === 'Failed to fetch'
+        if (!noApi) {
+          banner.textContent = `Could not reach API: ${err.message}`
+          banner.style.display = 'block'
+          statusLine.textContent = 'Retrying in 5s…'
+        }
       }
     }
 
