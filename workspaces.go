@@ -85,6 +85,10 @@ func excludedWorkspaces() map[string]bool {
 
 func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if !validWorkspaceName.MatchString(name) {
+		http.Error(w, "invalid workspace name", http.StatusBadRequest)
+		return
+	}
 
 	entries, err := a.gh.listDir(r.Context(), name)
 	if err != nil {
@@ -172,6 +176,10 @@ func (a *app) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("name")
+	if !validWorkspaceName.MatchString(name) {
+		http.Error(w, "invalid workspace name", http.StatusBadRequest)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()

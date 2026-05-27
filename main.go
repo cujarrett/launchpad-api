@@ -24,7 +24,7 @@ type app struct {
 func main() {
 	port := envOrDefault("PORT", "8080")
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	gh := newGithubClient(
 		mustEnv("LAUNCHPAD_API"),
@@ -111,6 +111,10 @@ func (a *app) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tenant := r.PathValue("name")
+	if !validWorkspaceName.MatchString(tenant) {
+		http.Error(w, "invalid workspace name", http.StatusBadRequest)
+		return
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var req writeRequest
@@ -207,6 +211,10 @@ func (a *app) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
 	}
 	tenant := r.PathValue("name")
 	resource := r.PathValue("resource")
+	if !validWorkspaceName.MatchString(tenant) || !validWorkspaceName.MatchString(resource) {
+		http.Error(w, "invalid workspace or resource name", http.StatusBadRequest)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()

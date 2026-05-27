@@ -98,6 +98,10 @@ func nestedMap(obj map[string]any, keys ...string) (map[string]any, bool, error)
 func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 	tenant := r.PathValue("name")
 	resource := r.PathValue("resource")
+	if !validWorkspaceName.MatchString(tenant) || !validWorkspaceName.MatchString(resource) {
+		http.Error(w, "invalid workspace or resource name", http.StatusBadRequest)
+		return
+	}
 
 	if a.dynClient == nil {
 		http.Error(w, "k8s unavailable", http.StatusServiceUnavailable)
