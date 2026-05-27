@@ -40,7 +40,7 @@ Wires everything together. Creates the `app` struct holding a `*githubClient`, a
 
 Registers two mux layers. The inner `api` mux is wrapped by `auth.requireAuth` — every request through it goes through JWT validation. The outer `mux` registers `/healthz` and the guest endpoints (`/api/guest/...`) before the auth-wrapped catch-all, so guest creation never requires a token.
 
-Starts three goroutines: the K8s watcher, the guest cleanup loop, and the HTTP server itself. Shutdown is coordinated with `signal.NotifyContext` — the server gets `Shutdown(ctx)` with a 10-second grace period.
+Starts three goroutines: the K8s watcher, the guest cleanup loop, and the HTTP server itself. Shutdown is coordinated with `signal.NotifyContext` — the server gets `Shutdown(ctx)` with a 5-second grace period.
 
 **Key symbols**: `app struct { gh, bcast, dynClient }`, `mustEnv(key)`, `envOrDefault(key, default)`, `writeJSON(w, v)`
 
@@ -164,17 +164,17 @@ A demo API deployed inside guest XApi workspaces — the thing that actually run
 
 ### `hello-world-api/main.go`
 
-Two routes: `GET /healthz` (200 OK), and `GET /` which returns integration status JSON. The response shape is `{ message, workspace, timestamp, integrations[] }` where each integration is `{ name, status, detail }`.
+Three routes: `GET /healthz` (200 OK), `GET /readyz` (readiness probe — 503 while any wired integration is not yet `ok`), and `GET /` which returns integration status JSON. The response shape is `{ message, workspace, timestamp, integrations[] }` where each integration is `{ name, status, detail }`.
 
-Integration status is determined by probing at request time. `probeBinding(root, name, displayName)` checks whether `/bindings/{name}/host` exists (the service binding convention), reads the host and port from files in that directory, then dials a TCP connection with a 3-second timeout. Status is `not_configured` if the binding directory is absent, `unavailable` if the TCP dial fails, `ok` if it connects.
+Integration status is determined by probing at request time. `probeBinding(root, name, displayName)` checks whether `/bindings/{name}/host` exists (the service binding convention), reads the host and port from files in that directory, then dials a TCP connection with a 3-second timeout. Status is `not_configured` if the binding directory is absent, `starting` if the TCP dial fails (service binding is present but service isn't reachable yet), `ok` if it connects.
 
-`probeNATS()` does the same thing via the `NATS_URL` environment variable instead of a binding directory.
+`probeCloudBinding(root, name, displayName)` handles cloud integrations that have no TCP host (NoSQL Database, Object Storage). It checks whether `/bindings/{name}/type` exists — `not_configured` if absent, `ok` if present. The XApi composition's init containers guarantee the service is ready before the app container starts, so cloud bindings are never in a `starting` state.
 
-The three probed integrations are PostgreSQL (`/bindings/sql/`), Redis (`/bindings/cache/`), and NATS (`NATS_URL`). This reflects the three integration types a guest can add to a sandbox.
+The four probed integrations are PostgreSQL (`/bindings/sql/`), Redis (`/bindings/cache/`), NoSQL Database (`/bindings/nosql/`), and Object Storage (`/bindings/object-storage/`). This reflects the four integration types a guest can add to a sandbox.
 
 `Access-Control-Allow-Origin: *` is set on `GET /` so the sibling SPA can fetch from it cross-origin.
 
-**Key symbols**: `integrationStatus { Name, Status, Detail string }`, `probeBinding`, `probeNATS`, `checkIntegrations`
+**Key symbols**: `integrationStatus { Name, Status, Detail string }`, `probeBinding`, `probeCloudBinding`, `checkIntegrations`
 
 ### `hello-world-api/Dockerfile`
 
@@ -188,9 +188,9 @@ A static single-page demo app deployed inside guest XSpa workspaces — what sho
 
 ### `hello-world-spa/index.html`
 
-No framework, no build step — one HTML file served by nginx. On load, derives the sibling API URL from its own hostname by replacing `demo3.` with `demo3-api.` via a regex replace: `hostname.replace(/^(demo\d+)\./, '$1-api.')`.
+No framework, no build step — one HTML file served by nginx. On load, derives the sibling API URL from its own hostname by replacing `demo3.` with `demo3-api.` via a regex replace: `hostname.replace(/^(demo\d+)\./, '$1-api.')`. The workspace name badge is populated from the `?w=` query parameter that Launchpad appends when navigating to the SPA (e.g. `?w=midnight-submarine`), falling back to the hostname's first segment if the param is absent.
 
-Polls `GET /` on the API every 5 seconds with `fetch`. Renders one card per integration. Cards are colored by status: green border for `ok`, red for `unavailable`, grey/dimmed for `not_configured`. The workspace name badge comes from the `workspace` field in the API response.
+Polls `GET /` on the API every 5 seconds with `fetch`. Renders one card per integration. Cards are colored by status: green border for `ok`, red for `starting` (service binding present but not yet reachable) or `unavailable`, grey/dimmed for `not_configured`. The workspace name badge comes from the `workspace` field in the API response.
 
 It asks one question: "which integrations does this sandbox have?" and shows the answer in real time as you add or remove resources.
 
