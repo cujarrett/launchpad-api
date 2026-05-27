@@ -271,12 +271,15 @@
     const apiBase = hostname.replace(/^(demo\d+)\./, '$1-api.')
     const apiURL = `https://${apiBase}/`
 
-    // Show workspace slug immediately from hostname, no API needed
-    const slug = hostname.split('.')[0]
-    document.getElementById('workspace-name').textContent = slug
+    // Workspace name: Launchpad appends ?w=midnight-submarine when opening the SPA.
+    // Fall back to the slot slug (e.g. "demo4") if the param is absent.
+    const params = new URLSearchParams(window.location.search)
+    const workspaceName = params.get('w') || hostname.split('.')[0]
+    document.getElementById('workspace-name').textContent = workspaceName
 
-    // Persist launch timestamp in localStorage so it survives page refreshes
-    const tsKey = 'launched:' + hostname
+    // Launched timestamp: store per workspace name, not per slot hostname,
+    // so a recycled slot doesn't show a stale date from a previous occupant.
+    const tsKey = 'launched:' + workspaceName
     if (!localStorage.getItem(tsKey)) localStorage.setItem(tsKey, Date.now())
     const launchedMs = parseInt(localStorage.getItem(tsKey), 10)
     document.getElementById('launched-at').textContent =
@@ -311,7 +314,6 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         banner.style.display = 'none'
-        if (data.workspace) document.getElementById('workspace-name').textContent = data.workspace
         renderGrid(data.integrations ?? [])
         statusLine.textContent = `Updated ${new Date(data.timestamp).toLocaleTimeString()}`
         if (!apiVisible) {
