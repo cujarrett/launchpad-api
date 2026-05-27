@@ -7,178 +7,271 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg: #08090d;
+      --surface: #0f1117;
+      --border: rgba(255,255,255,0.07);
+      --muted: #4b5263;
+      --text: #e2e8f0;
+      --text-dim: #8892a4;
+      --green: #22c55e;
+      --red: #f87171;
+      --purple: #a78bfa;
+      --purple-glow: rgba(124,58,237,0.15);
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0d1117;
-      color: #e6edf3;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 48px 24px;
+      padding: 56px 24px 80px;
     }
 
-    header {
+    /* ── Hero ── */
+    .hero {
       text-align: center;
-      margin-bottom: 40px;
+      margin-bottom: 48px;
     }
 
-    header h1 {
-      font-size: 1.5rem;
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
       font-weight: 600;
-      color: #f0f6fc;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--purple);
+      background: var(--purple-glow);
+      border: 1px solid rgba(124,58,237,0.25);
+      border-radius: 100px;
+      padding: 4px 12px;
+      margin-bottom: 20px;
     }
 
-    header p {
-      margin-top: 6px;
-      font-size: 0.875rem;
-      color: #8b949e;
+    .hero h1 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #f8fafc;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      color: var(--text-dim);
     }
 
     .workspace-badge {
       display: inline-block;
-      margin-top: 10px;
-      padding: 3px 10px;
-      border-radius: 20px;
+      margin-top: 16px;
+      padding: 4px 12px;
+      border-radius: 100px;
       font-size: 0.75rem;
-      font-family: monospace;
-      background: #161b22;
-      border: 1px solid #30363d;
-      color: #58a6ff;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--purple);
     }
 
+    /* ── Cards grid ── */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
       width: 100%;
-      max-width: 800px;
+      max-width: 760px;
+      margin-bottom: 24px;
     }
 
     .card {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 20px 16px;
-      transition: border-color 0.2s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 16px;
+      transition: border-color 0.25s, box-shadow 0.25s;
     }
 
-    .card.ok { border-color: #238636; }
-    .card.unavailable { border-color: #da3633; }
-    .card.not_configured { border-color: #30363d; opacity: 0.6; }
+    .card.ok {
+      border-color: rgba(34,197,94,0.3);
+      box-shadow: 0 0 0 1px rgba(34,197,94,0.05), inset 0 0 24px rgba(34,197,94,0.04);
+    }
+
+    .card.unavailable { border-color: rgba(248,113,113,0.3); }
 
     .card-name {
-      font-size: 0.8rem;
+      font-size: 0.72rem;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #8b949e;
-      margin-bottom: 10px;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 12px;
     }
 
     .card-status {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
+      font-weight: 500;
     }
 
+    .ok .card-status { color: var(--green); }
+    .unavailable .card-status { color: var(--red); }
+    .not_configured .card-status { color: var(--muted); }
+
     .dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       flex-shrink: 0;
     }
 
-    .ok .dot { background: #3fb950; }
-    .unavailable .dot { background: #f85149; }
-    .not_configured .dot { background: #484f58; }
-
-    .card-detail {
-      margin-top: 8px;
-      font-size: 0.75rem;
-      color: #8b949e;
-      font-family: monospace;
-      word-break: break-all;
+    .ok .dot {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse-dot 2.4s ease-in-out infinite;
     }
 
-    .api-info {
-      margin-top: 40px;
+    .unavailable .dot { background: var(--red); }
+    .not_configured .dot { background: var(--muted); }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── API panel ── */
+    .api-panel {
       width: 100%;
-      max-width: 800px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 16px;
+      max-width: 760px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
     }
 
-    .api-info p {
+    .api-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .api-panel a {
       font-size: 0.8rem;
-      color: #8b949e;
-      margin-bottom: 6px;
-    }
-
-    .api-info a {
-      font-size: 0.85rem;
-      color: #58a6ff;
-      font-family: monospace;
+      color: var(--purple);
+      font-family: 'SF Mono', 'Fira Code', monospace;
       text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .api-info a:hover { text-decoration: underline; }
+    .api-panel a:hover { text-decoration: underline; }
 
+    /* ── Status line ── */
     .status-line {
-      margin-top: 40px;
-      font-size: 0.75rem;
-      color: #484f58;
+      width: 100%;
+      max-width: 760px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-align: right;
+      margin-bottom: 48px;
     }
 
+    /* ── Error banner ── */
     .error-banner {
       width: 100%;
-      max-width: 800px;
-      background: #1c1c1c;
-      border: 1px solid #da3633;
+      max-width: 760px;
+      background: rgba(248,113,113,0.07);
+      border: 1px solid rgba(248,113,113,0.25);
       border-radius: 8px;
-      padding: 14px 16px;
+      padding: 12px 16px;
       font-size: 0.85rem;
-      color: #f85149;
-      margin-bottom: 24px;
+      color: var(--red);
+      margin-bottom: 20px;
       display: none;
     }
+
+    /* ── Launchpad callout ── */
+    .built-with {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(15,17,23,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 8px 18px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    .built-with a {
+      color: var(--purple);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .built-with a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Launchpad Sandbox</h1>
-    <p>Live integration status</p>
-    <span class="workspace-badge" id="workspace-name">loading...</span>
+  <header class="hero">
+    <div class="hero-eyebrow">🧪 Sandbox</div>
+    <h1>Hello from Launchpad</h1>
+    <p>Live integration status for your workspace</p>
+    <span class="workspace-badge" id="workspace-name">loading…</span>
   </header>
 
   <div class="error-banner" id="error-banner"></div>
 
   <div class="grid" id="grid"></div>
 
-  <div class="api-info">
-    <p>Raw API response</p>
-    <a id="api-link" href="#" target="_blank">—</a>
+  <div class="api-panel">
+    <span class="api-label">API</span>
+    <a id="api-link" href="#" target="_blank" rel="noopener noreferrer">—</a>
   </div>
 
-  <p class="status-line" id="status-line">polling...</p>
+  <p class="status-line" id="status-line">polling…</p>
+
+  <div class="built-with">
+    🚀 Built in minutes with <a href="https://launchpad.mattjarrett.dev" target="_blank" rel="noopener noreferrer">Launchpad</a>
+  </div>
 
   <script>
-    const hostname = window.location.hostname;
-    // demo3.mattjarrett.dev → demo3-api.mattjarrett.dev
-    const apiBase = hostname.replace(/^(demo\d+)\./, '$1-api.');
-    const apiURL = `https://${apiBase}/`;
+    const hostname = window.location.hostname
+    const apiBase = hostname.replace(/^(demo\d+)\./, '$1-api.')
+    const apiURL = `https://${apiBase}/`
 
-    document.getElementById('api-link').href = apiURL;
-    document.getElementById('api-link').textContent = apiURL;
+    const apiLink = document.getElementById('api-link')
+    apiLink.href = apiURL
+    apiLink.textContent = apiURL
 
-    const ICONS = { ok: '✓', unavailable: '✗', not_configured: '—' };
-    const LABELS = { ok: 'Connected', unavailable: 'Unreachable', not_configured: 'Not provisioned' };
+    const LABELS = { ok: 'Connected', unavailable: 'Unreachable', not_configured: 'Not provisioned' }
 
     function renderGrid(integrations) {
-      const grid = document.getElementById('grid');
+      const grid = document.getElementById('grid')
       grid.innerHTML = integrations.map(i => `
         <div class="card ${i.status}">
           <div class="card-name">${i.name}</div>
@@ -186,31 +279,30 @@
             <div class="dot"></div>
             <span>${LABELS[i.status] ?? i.status}</span>
           </div>
-          ${i.detail ? `<div class="card-detail">${i.detail}</div>` : ''}
         </div>
-      `).join('');
+      `).join('')
     }
 
     async function poll() {
-      const banner = document.getElementById('error-banner');
-      const statusLine = document.getElementById('status-line');
+      const banner = document.getElementById('error-banner')
+      const statusLine = document.getElementById('status-line')
       try {
-        const res = await fetch(apiURL, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`API returned ${res.status}`);
-        const data = await res.json();
-        banner.style.display = 'none';
-        document.getElementById('workspace-name').textContent = data.workspace ?? hostname;
-        renderGrid(data.integrations ?? []);
-        statusLine.textContent = `Last updated ${new Date(data.timestamp).toLocaleTimeString()}`;
+        const res = await fetch(apiURL, { cache: 'no-store' })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        banner.style.display = 'none'
+        document.getElementById('workspace-name').textContent = data.workspace ?? hostname
+        renderGrid(data.integrations ?? [])
+        statusLine.textContent = `Last updated ${new Date(data.timestamp).toLocaleTimeString()}`
       } catch (err) {
-        banner.textContent = `Could not reach API: ${err.message}`;
-        banner.style.display = 'block';
-        statusLine.textContent = 'Retrying in 5s…';
+        banner.textContent = `Could not reach API: ${err.message}`
+        banner.style.display = 'block'
+        statusLine.textContent = 'Retrying in 5s…'
       }
     }
 
-    poll();
-    setInterval(poll, 5000);
+    poll()
+    setInterval(poll, 5000)
   </script>
 </body>
 </html>
