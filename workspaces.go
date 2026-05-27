@@ -159,6 +159,7 @@ func (a *app) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.triggerAppSetRefresh()
 	a.triggerArgoSync(req.Name)
 	slog.Info("created workspace", "name", req.Name)
 	w.WriteHeader(http.StatusCreated)
@@ -208,6 +209,27 @@ func (a *app) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("deleted workspace", "name", name)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// triggerAppSetRefresh patches the xrs ApplicationSet with a refresh annotation
+// so it immediately re-scans the Git repo for new workspace directories instead
+// of waiting for the 2–3 min polling interval. Call this whenever a new workspace
+// directory is created in GitHub so the Application gets created right away.
+func (a *app) triggerAppSetRefresh() {
+	if a.dynClient == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		appSetGVR := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applicationsets"}
+		patch := []byte(`{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"normal"}}}`)
+		if _, err := a.dynClient.Resource(appSetGVR).Namespace("argocd").Patch(
+			ctx, "xrs", types.MergePatchType, patch, metav1.PatchOptions{},
+		); err != nil {
+			slog.Debug("appset refresh trigger", "err", err)
+		}
+	}()
 }
 
 // triggerArgoSync patches the ArgoCD Application for the given workspace with

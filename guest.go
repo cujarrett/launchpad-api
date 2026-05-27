@@ -163,6 +163,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	}
 
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
+	a.triggerAppSetRefresh()
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, guestWorkspaceJSON{
 		Name:      fullName,
