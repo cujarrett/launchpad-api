@@ -301,6 +301,7 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 		a.updateGuestApiRefs(ctx, workspaceName, wsSlot)
 	}
 
+	a.triggerArgoSync(workspaceName)
 	w.WriteHeader(http.StatusCreated)
 }
 
