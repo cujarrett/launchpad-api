@@ -341,6 +341,9 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["image"] = image
 		p["host"] = fmt.Sprintf("%s.mattjarrett.dev", slot)
 		p["tlsIssuer"] = "letsencrypt-prod"
+		// hello-world-spa uses inline <style>/<script> and fetches the companion API
+		// on a different subdomain — relax CSP accordingly.
+		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"
 	case "XSql":
 		p["backend"] = "cluster"
 		p["dataRetention"] = "delete"
