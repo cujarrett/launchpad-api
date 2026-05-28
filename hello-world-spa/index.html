@@ -83,14 +83,20 @@
       color: var(--muted);
     }
 
+    /* ── Content column ── */
+    .content {
+      width: 100%;
+      max-width: 580px;
+      display: flex;
+      flex-direction: column;
+    }
+
     /* ── Cards grid ── */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
       gap: 12px;
-      width: 100%;
-      max-width: 760px;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
 
     .card {
@@ -155,8 +161,6 @@
 
     /* ── API panel ── */
     .api-panel {
-      width: 100%;
-      max-width: 760px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -191,8 +195,6 @@
 
     /* ── Status line ── */
     .status-line {
-      width: 100%;
-      max-width: 760px;
       font-size: 0.72rem;
       color: var(--muted);
       text-align: right;
@@ -201,8 +203,6 @@
 
     /* ── API message ── */
     .api-message {
-      width: 100%;
-      max-width: 760px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -229,7 +229,7 @@
     /* ── Error banner ── */
     .error-banner {
       width: 100%;
-      max-width: 760px;
+      max-width: 580px;
       background: rgba(248,113,113,0.07);
       border: 1px solid rgba(248,113,113,0.25);
       border-radius: 8px;
@@ -280,19 +280,21 @@
 
   <div class="error-banner" id="error-banner"></div>
 
-  <div class="grid" id="grid"></div>
+  <div class="content">
+    <div class="grid" id="grid"></div>
 
-  <div class="api-message" id="api-message" style="display:none">
-    <span class="api-message-label">Message</span>
-    <span class="api-message-text" id="api-message-text"></span>
+    <div class="api-message" id="api-message" style="display:none">
+      <span class="api-message-label">Message</span>
+      <span class="api-message-text" id="api-message-text"></span>
+    </div>
+
+    <div class="api-panel" id="api-panel" style="display:none">
+      <span class="api-label">API</span>
+      <a id="api-link" href="#" target="_blank" rel="noopener noreferrer">&mdash;</a>
+    </div>
+
+    <p class="status-line" id="status-line"></p>
   </div>
-
-  <div class="api-panel" id="api-panel" style="display:none">
-    <span class="api-label">API</span>
-    <a id="api-link" href="#" target="_blank" rel="noopener noreferrer">—</a>
-  </div>
-
-  <p class="status-line" id="status-line"></p>
 
   <div class="built-with">
     🚀 Built in minutes with <a href="https://launchpad.mattjarrett.dev" target="_blank" rel="noopener noreferrer">Launchpad</a>
