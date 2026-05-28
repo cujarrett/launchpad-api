@@ -202,32 +202,36 @@
       margin-bottom: 48px;
     }
 
-    /* ── API message ── */
-    .api-message {
+    /* ── API response ── */
+    .api-response {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 14px 18px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
+      padding: 14px 16px;
       margin-bottom: 12px;
-      text-align: center;
     }
-    .api-message-label {
+    .api-response-label {
       font-size: 0.72rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.07em;
       color: var(--muted);
-      flex-shrink: 0;
+      display: block;
+      margin-bottom: 10px;
     }
-    .api-message-text {
-      font-size: 0.85rem;
-      color: var(--green);
+    .api-response pre {
+      margin: 0;
+      font-size: 0.76rem;
       font-family: 'SF Mono', 'Fira Code', monospace;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
     }
+    .json-key  { color: #60a5fa; }
+    .json-str  { color: var(--green); }
+    .json-bool { color: var(--purple); }
+    .json-null { color: var(--muted); }
+    .json-num  { color: #fbbf24; }
 
     /* ── Error banner ── */
     .error-banner {
@@ -286,9 +290,9 @@
   <div class="content">
     <div class="grid" id="grid"></div>
 
-    <div class="api-message" id="api-message" style="display:none">
-      <span class="api-message-label">Integrated API Response</span>
-      <span class="api-message-text" id="api-message-text"></span>
+    <div class="api-response" id="api-response" style="display:none">
+      <span class="api-response-label">API Response</span>
+      <pre><code id="api-response-code"></code></pre>
     </div>
 
     <div class="api-panel" id="api-panel" style="display:none">
@@ -332,6 +336,21 @@
     apiLink.href = apiURL
     apiLink.textContent = apiURL
 
+    function syntaxHighlight(obj) {
+      const json = JSON.stringify(obj, null, 2)
+      return json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        match => {
+          let cls = 'json-num'
+          if (/^".+":$/.test(match.trim())) cls = 'json-key'
+          else if (/^"/.test(match))       cls = 'json-str'
+          else if (/true|false/.test(match)) cls = 'json-bool'
+          else if (/null/.test(match))      cls = 'json-null'
+          return `<span class="${cls}">${match}</span>`
+        }
+      )
+    }
+
     const LABELS = { ok: 'Connected', unavailable: 'Unreachable', starting: 'Starting…', not_configured: 'Not provisioned' }
 
     function renderGrid(integrations) {
@@ -359,8 +378,8 @@
         banner.style.display = 'none'
         if (data.workspace) setWorkspaceName(data.workspace)
         renderGrid(data.integrations ?? [])
-        document.getElementById('api-message-text').textContent = `"${data.message}"`
-        document.getElementById('api-message').style.display = ''
+        document.getElementById('api-response-code').innerHTML = syntaxHighlight(data)
+        document.getElementById('api-response').style.display = ''
         statusLine.textContent = `Updated ${new Date(data.timestamp).toLocaleTimeString()}`
         if (!apiVisible) {
           document.getElementById('api-panel').style.display = ''
