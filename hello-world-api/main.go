@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
-	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,33 +12,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-)
-
-type landingData struct {
-	Workspace    string
-	Timestamp    string
-	Integrations []integrationStatus
-	JSON         string
-}
-
-func statusLabel(s string) string {
-	switch s {
-	case "ok":
-		return "Connected"
-	case "starting":
-		return "Starting\u2026"
-	case "unavailable":
-		return "Unreachable"
-	default:
-		return "Not provisioned"
-	}
-}
-
-//go:embed landing.html
-var landingHTMLTmpl string
-
-var landingTmpl = template.Must(
-	template.New("landing").Funcs(template.FuncMap{"statusLabel": statusLabel}).Parse(landingHTMLTmpl),
 )
 
 type integrationStatus struct {
@@ -137,7 +107,8 @@ func main() {
 			}
 		}
 		workspace := podNamespace()
-		payload := struct {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct { //nolint:errcheck
 			Message      string              `json:"message"`
 			Workspace    string              `json:"workspace"`
 			Timestamp    string              `json:"timestamp"`
@@ -149,24 +120,7 @@ func main() {
 			Timestamp:    time.Now().UTC().Format(time.RFC3339),
 			Ready:        ready,
 			Integrations: wired,
-		}
-		if strings.Contains(r.Header.Get("Accept"), "text/html") {
-			var buf bytes.Buffer
-			enc := json.NewEncoder(&buf)
-			enc.SetEscapeHTML(false)
-			enc.SetIndent("", "  ")
-			_ = enc.Encode(payload)
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = landingTmpl.Execute(w, landingData{
-				Workspace:    workspace,
-				Timestamp:    payload.Timestamp,
-				Integrations: wired,
-				JSON:         strings.TrimRight(buf.String(), "\n"),
-			})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(payload) //nolint:errcheck
+		})
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
