@@ -102,7 +102,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if len(existing) >= guestMaxCount {
-		http.Error(w, "all 5 demo slots are in use — try again in a few minutes", http.StatusTooManyRequests)
+		http.Error(w, fmt.Sprintf("all %d demo slots are in use — try again in a few minutes", guestMaxCount), http.StatusTooManyRequests)
 		return
 	}
 
@@ -142,7 +142,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	slot, err := pickGuestSlot(usedSlots)
 	if err != nil {
 		slog.Error("create guest workspace: pick slot", "err", err)
-		http.Error(w, "all 5 demo slots are in use — try again in a few minutes", http.StatusTooManyRequests)
+		http.Error(w, fmt.Sprintf("all %d demo slots are in use — try again in a few minutes", guestMaxCount), http.StatusTooManyRequests)
 		return
 	}
 
