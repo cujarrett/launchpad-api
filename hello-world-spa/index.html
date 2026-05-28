@@ -201,6 +201,33 @@
       margin-bottom: 48px;
     }
 
+    /* ── API message ── */
+    .api-message {
+      width: 100%;
+      max-width: 760px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+    .api-message-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .api-message-text {
+      font-size: 0.85rem;
+      color: var(--green);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
     /* ── Error banner ── */
     .error-banner {
       width: 100%;
@@ -258,6 +285,11 @@
 
   <div class="grid" id="grid"></div>
 
+  <div class="api-message" id="api-message" style="display:none">
+    <span class="api-message-label">Message</span>
+    <span class="api-message-text" id="api-message-text"></span>
+  </div>
+
   <div class="api-panel" id="api-panel" style="display:none">
     <span class="api-label">API</span>
     <a id="api-link" href="#" target="_blank" rel="noopener noreferrer">—</a>
@@ -274,19 +306,25 @@
     const apiBase = hostname.replace(/^(demo\d+)\./, '$1-api.')
     const apiURL = `https://${apiBase}/`
 
-    // Workspace name: Launchpad appends ?w=midnight-submarine when opening the SPA.
-    // Fall back to the slot slug (e.g. "demo4") if the param is absent.
-    const params = new URLSearchParams(window.location.search)
-    const workspaceName = params.get('w') || hostname.split('.')[0]
-    document.getElementById('workspace-name').textContent = workspaceName
+    // Show the slot slug until the API responds with the real workspace name.
+    const slotSlug = hostname.split('.')[0]
+    document.getElementById('workspace-name').textContent = slotSlug
 
-    // Launched timestamp: store per workspace name, not per slot hostname,
-    // so a recycled slot doesn't show a stale date from a previous occupant.
-    const tsKey = 'launched:' + workspaceName
-    if (!localStorage.getItem(tsKey)) localStorage.setItem(tsKey, Date.now())
-    const launchedMs = parseInt(localStorage.getItem(tsKey), 10)
-    document.getElementById('launched-at').textContent =
-      'Launched ' + new Date(launchedMs).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    let workspaceKnown = false
+
+    function setWorkspaceName(raw) {
+      if (workspaceKnown) return
+      workspaceKnown = true
+      const name = raw.replace(/^guest-/, '')
+      document.getElementById('workspace-name').textContent = name
+      // Key the launched timestamp to this workspace, not the slot —
+      // so a recycled slot doesn't show a stale date from a previous occupant.
+      const tsKey = 'launched:' + name
+      if (!localStorage.getItem(tsKey)) localStorage.setItem(tsKey, Date.now())
+      const launchedMs = parseInt(localStorage.getItem(tsKey), 10)
+      document.getElementById('launched-at').textContent =
+        'Launched ' + new Date(launchedMs).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    }
 
     const apiLink = document.getElementById('api-link')
     apiLink.href = apiURL
@@ -317,7 +355,10 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
         banner.style.display = 'none'
+        if (data.workspace) setWorkspaceName(data.workspace)
         renderGrid(data.integrations ?? [])
+        document.getElementById('api-message-text').textContent = `"${data.message}"`
+        document.getElementById('api-message').style.display = ''
         statusLine.textContent = `Updated ${new Date(data.timestamp).toLocaleTimeString()}`
         if (!apiVisible) {
           document.getElementById('api-panel').style.display = ''
