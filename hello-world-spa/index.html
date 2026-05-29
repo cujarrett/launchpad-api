@@ -288,7 +288,7 @@
   <div class="error-banner" id="error-banner"></div>
 
   <div class="content">
-    <div class="grid" id="grid"></div>
+    <div class="grid" id="grid"><p id="grid-loading" style="grid-column:1/-1;color:var(--text-dim);font-size:0.85rem;">Loading integrations…</p></div>
 
     <div class="api-response" id="api-response" style="display:none">
       <span class="api-response-label">API Response</span>
@@ -317,6 +317,7 @@
     document.getElementById('workspace-name').textContent = slotSlug
 
     let workspaceKnown = false
+    let hasData = false
 
     function setWorkspaceName(raw) {
       if (workspaceKnown) return
@@ -377,6 +378,7 @@
         const data = await res.json()
         banner.style.display = 'none'
         if (data.workspace) setWorkspaceName(data.workspace)
+        hasData = true
         renderGrid(data.integrations ?? [])
         document.getElementById('api-response-code').innerHTML = syntaxHighlight(data)
         document.getElementById('api-response').style.display = ''
@@ -392,6 +394,9 @@
           banner.textContent = `Could not reach API: ${err.message}`
           banner.style.display = 'block'
           statusLine.textContent = 'Retrying in 5s…'
+        } else if (!hasData) {
+          const loading = document.getElementById('grid-loading')
+          if (loading) loading.textContent = 'Waiting for API\u2026'
         }
       }
     }
