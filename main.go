@@ -72,6 +72,7 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	mux.HandleFunc("GET /metrics", a.handleMetrics)
 	// Guest endpoints — no auth required; registered before the catch-all.
 	mux.HandleFunc("GET /api/guest/workspaces", a.handleListGuestWorkspaces)
 	mux.HandleFunc("POST /api/guest/workspaces", a.handleCreateGuestWorkspace)

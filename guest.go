@@ -693,3 +693,50 @@ func pickGuestSlot(used map[string]bool) (string, error) {
 	}
 	return candidates[int(b[0])%len(candidates)], nil
 }
+
+// handleMetrics serves a Prometheus text-format metrics endpoint.
+// It exposes two gauges: active guest workspace count and total resource count.
+func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	workspaces, err := a.loadGuestWorkspaces(ctx)
+	if err != nil {
+		slog.Error("metrics: load guest workspaces", "err", err)
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
+
+	// Count only non-expired workspaces.
+	now := time.Now()
+	var liveWorkspaces []guestWorkspaceJSON
+	for _, ws := range workspaces {
+		expiry, parseErr := time.Parse(time.RFC3339, ws.ExpiresAt)
+		if parseErr != nil || now.After(expiry) {
+			continue
+		}
+		liveWorkspaces = append(liveWorkspaces, ws)
+	}
+
+	totalResources := 0
+	for _, ws := range liveWorkspaces {
+		entries, listErr := a.gh.listDir(ctx, ws.Name)
+		if listErr != nil {
+			slog.Warn("metrics: list workspace", "workspace", ws.Name, "err", listErr)
+			continue
+		}
+		for _, e := range entries {
+			if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
+				totalResources++
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	fmt.Fprintf(w, "# HELP launchpad_guest_workspace_count Number of active guest workspaces.\n")
+	fmt.Fprintf(w, "# TYPE launchpad_guest_workspace_count gauge\n")
+	fmt.Fprintf(w, "launchpad_guest_workspace_count %d\n", len(liveWorkspaces))
+	fmt.Fprintf(w, "# HELP launchpad_guest_resource_count Total resources across all active guest workspaces.\n")
+	fmt.Fprintf(w, "# TYPE launchpad_guest_resource_count gauge\n")
+	fmt.Fprintf(w, "launchpad_guest_resource_count %d\n", totalResources)
+}
