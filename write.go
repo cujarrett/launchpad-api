@@ -39,7 +39,7 @@ func (c *githubClient) upsertFile(ctx context.Context, path, message, content st
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("github upsert %s: status %d", path, resp.StatusCode)
@@ -77,7 +77,7 @@ func (c *githubClient) deleteFile(ctx context.Context, path, message string) err
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("github delete %s: status %d", path, resp.StatusCode)
@@ -95,7 +95,7 @@ func (c *githubClient) currentSHA(ctx context.Context, url string) string {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var f ghFileResponse
 	if err := json.NewDecoder(resp.Body).Decode(&f); err != nil {
 		return ""

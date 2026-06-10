@@ -54,7 +54,7 @@ func (c *githubClient) listDir(ctx context.Context, path string) ([]ghEntry, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github API %s: status %d", url, resp.StatusCode)
@@ -76,7 +76,7 @@ func (c *githubClient) fileContent(ctx context.Context, path string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github API %s: status %d", url, resp.StatusCode)

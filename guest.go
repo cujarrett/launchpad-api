@@ -733,10 +733,10 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	fmt.Fprintf(w, "# HELP launchpad_guest_workspace_count Number of active guest workspaces.\n")
-	fmt.Fprintf(w, "# TYPE launchpad_guest_workspace_count gauge\n")
-	fmt.Fprintf(w, "launchpad_guest_workspace_count %d\n", len(liveWorkspaces))
-	fmt.Fprintf(w, "# HELP launchpad_guest_resource_count Total resources across all active guest workspaces.\n")
-	fmt.Fprintf(w, "# TYPE launchpad_guest_resource_count gauge\n")
-	fmt.Fprintf(w, "launchpad_guest_resource_count %d\n", totalResources)
+	_, _ = fmt.Fprintf(w, "# HELP launchpad_guest_workspace_count Number of active guest workspaces.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE launchpad_guest_workspace_count gauge\n")
+	_, _ = fmt.Fprintf(w, "launchpad_guest_workspace_count %d\n", len(liveWorkspaces))
+	_, _ = fmt.Fprintf(w, "# HELP launchpad_guest_resource_count Total resources across all active guest workspaces.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE launchpad_guest_resource_count gauge\n")
+	_, _ = fmt.Fprintf(w, "launchpad_guest_resource_count %d\n", totalResources)
 }

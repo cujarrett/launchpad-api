@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -192,10 +191,4 @@ func findResourceParams(ctx context.Context, client dynamic.Interface, tenant, n
 		return params, true
 	}
 	return nil, false
-}
-
-// serveSchemaJSON is a helper used in tests.
-func serveSchemaJSON(w http.ResponseWriter, schema map[string]any) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(schema) //nolint:errcheck
 }
