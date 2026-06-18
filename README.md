@@ -43,3 +43,26 @@ curl http://localhost:8080/healthz
 ## Deployment
 
 ARM64 Docker image built by CI and pushed to GHCR. Deployed as an XApi Crossplane XR in the cluster via ArgoCD. The XR mounts a `launchpad-secrets` K8s secret as `envFrom`, injecting `LAUNCHPAD_API`, `ENTRA_TENANT_ID`, and `ENTRA_API_CLIENT_ID` into the pod.
+
+### Rotating `LAUNCHPAD_API`
+
+`LAUNCHPAD_API` is a GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces`. Rotate it when the PAT expires or is compromised.
+
+1. Generate a new PAT in GitHub with `contents: write` on `cujarrett/homelab-workspaces`
+2. Patch the secret (avoids the value appearing in shell history):
+
+```bash
+read -rs NEW_TOKEN
+kubectl patch secret launchpad-secrets -n launchpad \
+  --type='json' \
+  -p='[{"op":"replace","path":"/data/LAUNCHPAD_API","value":"'"$(echo -n "$NEW_TOKEN" | base64)"'"}]'
+unset NEW_TOKEN
+```
+
+3. Restart the deployment — env vars are injected at pod startup, so a restart is required:
+
+```bash
+kubectl rollout restart deployment/launchpad-api -n launchpad
+```
+
+4. Verify by opening `https://launchpad.mattjarrett.dev` and confirming workspace XR commits succeed in sandbox.
