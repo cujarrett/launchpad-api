@@ -7,6 +7,7 @@
 - Do not use global variables — put state on the `app` struct.
 - Do not call `os.Getenv` inside handlers — read config once in `main()`.
 - Keep all application code in `main.go` and all tests in `main_test.go` unless the file grows large enough to warrant splitting.
+- **Never include environment variable values, file contents, or internal paths in HTTP responses.** This includes error messages, debug output, and structured error bodies. launchpad-api runs with AWS credentials injected at `/aws-credentials/credentials` — any response that leaks file system contents or env var values is a credential exposure to public guests at `launchpad.mattjarrett.dev`.
 
 ## Project Overview
 

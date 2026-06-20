@@ -54,19 +54,23 @@ func (a *app) handleListGuestWorkspaces(w http.ResponseWriter, r *http.Request) 
 
 // guestWords1 and guestWords2 are combined at random to form workspace names.
 // 25 × 25 = 625 possible combinations, keeping names fun and unpredictable.
+// Word length constraint: IAM role names are capped at 64 chars. The tightest
+// pattern is crossplane-guest-{slug}-xapi-{slug}-nosql (29 + 2×|slug|), so
+// |slug| = |word1| + 1 + |word2| must be ≤ 17, i.e. |word1|+|word2| ≤ 16.
+// All words here are ≤ 8 chars; pickGuestName filters any survivors above the limit.
 var guestWords1 = []string{
 	"atomic", "banana", "blazing", "chrome", "cosmic",
-	"disco", "electric", "exploding", "frozen", "fuzzy",
+	"disco", "electric", "booming", "frozen", "fuzzy",
 	"golden", "haunted", "jazzy", "laser", "magic",
 	"midnight", "neon", "phantom", "quantum", "rubber",
-	"shadow", "silver", "turbo", "velvet", "wandering",
+	"shadow", "silver", "turbo", "velvet", "wacky",
 }
 
 var guestWords2 = []string{
 	"anvil", "burrito", "cactus", "cannon", "cassette",
-	"catapult", "factory", "hamster", "jellybean", "llama",
+	"catapult", "factory", "hamster", "jelly", "llama",
 	"napkin", "penguin", "pickle", "pirate", "pretzel",
-	"rocket", "spatula", "spreadsheet", "submarine", "taco",
+	"rocket", "spatula", "scroll", "sphinx", "taco",
 	"toaster", "tornado", "volcano", "waffle", "wizard",
 }
 
@@ -327,8 +331,8 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
-			// SQL is opt-in — only wire when the user explicitly requested it.
-			if withSql && strings.HasPrefix(base, "xsql-") {
+			// SQL, NoSQL, and ObjectStorage are all auto-wired when present.
+			if strings.HasPrefix(base, "xsql-") {
 				p["sqlRef"] = base
 			}
 			// NoSQL and ObjectStorage are always auto-wired when present.
@@ -336,7 +340,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 				p["nosqlRef"] = base
 			}
 			if strings.HasPrefix(base, "xobjectstorage-") {
-				p["objectStorageRef"] = base
+				p["objectStorageRefs"] = base
 			}
 		}
 	case "XSpa":
@@ -347,7 +351,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		// on a different subdomain — relax CSP accordingly.
 		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"
 	case "XSql":
-		p["backend"] = "cluster"
+		p["backend"] = "private-cloud"
 		p["dataRetention"] = "delete"
 	case "XNoSql":
 		p["dataRetention"] = "delete"
@@ -387,13 +391,12 @@ func (a *app) updateGuestApiRefs(ctx context.Context, workspace, slot string) {
 		return // no XApi in this workspace yet
 	}
 
-	// Preserve the existing withCache / withSql choices from the live file.
-	var withCache, withSql bool
+	// Preserve the existing withCache choice from the live file.
+	var withCache bool
 	if existing, err := a.gh.fileContent(ctx, workspace+"/"+apiName+".yaml"); err == nil {
 		var m xrManifest
 		if yaml.Unmarshal(existing, &m) == nil {
 			withCache = m.Spec.Parameters["cache"] != nil
-			withSql = m.Spec.Parameters["sqlRef"] != nil
 		}
 	}
 
@@ -402,7 +405,7 @@ func (a *app) updateGuestApiRefs(ctx context.Context, workspace, slot string) {
 		Workspace: workspace,
 		Kind:      "XApi",
 		Name:      apiName,
-		Params:    buildGuestParams(workspace, slot, apiName, "XApi", guestImage, fileNames, withCache, withSql),
+		Params:    buildGuestParams(workspace, slot, apiName, "XApi", guestImage, fileNames, withCache, false),
 	}
 	rendered, err := RenderResource(wr)
 	if err != nil {
@@ -650,6 +653,11 @@ func pickGuestName(used map[string]bool) (string, error) {
 	candidates := make([]string, 0, len(guestWords1)*len(guestWords2))
 	for _, w1 := range guestWords1 {
 		for _, w2 := range guestWords2 {
+			// IAM role names are capped at 64 chars; tightest pattern adds 29
+			// chars of fixed overhead, leaving 17 for the slug (word1-word2).
+			if len(w1)+len(w2) > 16 {
+				continue
+			}
 			full := guestPrefix + w1 + "-" + w2
 			if !used[full] {
 				candidates = append(candidates, full)

@@ -79,14 +79,15 @@ spec:
 {{- if .Params.sqlRef }}
     sqlRef:
       name: {{ .Params.sqlRef }}
+      backend: private-cloud
 {{- end }}
 {{- if .Params.nosqlRef }}
     nosqlRef:
       name: {{ .Params.nosqlRef }}
 {{- end }}
-{{- if .Params.objectStorageRef }}
-    objectStorageRef:
-      name: {{ .Params.objectStorageRef }}
+{{- if .Params.objectStorageRefs }}
+    objectStorageRefs:
+      - name: {{ .Params.objectStorageRefs }}
 {{- end }}
 {{- if .Params.topicRef }}
     topicRef:
@@ -103,6 +104,7 @@ spec:
 {{- if .Params.cache }}
     cache:
       enabled: true
+      backend: private-cloud
 {{- end }}
 {{- if .Params.readinessCheckPath }}
     readinessCheckPath: {{ .Params.readinessCheckPath }}
@@ -116,7 +118,7 @@ metadata:
 spec:
   parameters:
     namespace: {{ .Params.namespace }}
-    backend: {{ or .Params.backend "cluster" }}
+    backend: {{ or .Params.backend "private-cloud" }}
     dataRetention: {{ or .Params.dataRetention "delete" }}
 {{- if .Params.size }}
     size: {{ .Params.size }}

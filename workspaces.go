@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -52,20 +53,33 @@ func (a *app) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	excluded := excludedWorkspaces()
-	workspaces := make([]workspaceJSON, 0)
+
+	// Collect dirs first, then fetch guest expiry in parallel.
+	var dirs []string
 	for _, e := range entries {
 		if e.Type == "dir" && !strings.HasPrefix(e.Name, ".") && !excluded[e.Name] {
-			ws := workspaceJSON{Name: e.Name}
-			if strings.HasPrefix(e.Name, guestPrefix) {
-				ws.IsGuest = true
-				if expiry := a.fetchGuestExpiry(r.Context(), e.Name); expiry != nil {
-					s := expiry.Format(time.RFC3339)
-					ws.ExpiresAt = &s
-				}
-			}
-			workspaces = append(workspaces, ws)
+			dirs = append(dirs, e.Name)
 		}
 	}
+
+	workspaces := make([]workspaceJSON, len(dirs))
+	var wg sync.WaitGroup
+	for i, name := range dirs {
+		workspaces[i] = workspaceJSON{Name: name}
+		if strings.HasPrefix(name, guestPrefix) {
+			workspaces[i].IsGuest = true
+			wg.Add(1)
+			go func(idx int, wsName string) {
+				defer wg.Done()
+				if expiry := a.fetchGuestExpiry(r.Context(), wsName); expiry != nil {
+					s := expiry.Format(time.RFC3339)
+					workspaces[idx].ExpiresAt = &s
+				}
+			}(i, name)
+		}
+	}
+	wg.Wait()
+
 	writeJSON(w, workspaces)
 }
 

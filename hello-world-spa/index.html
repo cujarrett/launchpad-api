@@ -93,13 +93,15 @@
 
     /* ── Cards grid ── */
     .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      display: flex;
+      flex-wrap: nowrap;
       gap: 12px;
       margin-bottom: 16px;
     }
 
     .card {
+      flex: 1 1 0;
+      min-width: 0;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -113,6 +115,7 @@
     }
 
     .card.unavailable,
+    .card.error,
     .card.starting { border-color: rgba(248,113,113,0.3); }
 
     .card-name {
@@ -134,8 +137,18 @@
 
     .ok .card-status { color: var(--green); }
     .unavailable .card-status,
+    .error .card-status,
     .starting .card-status { color: var(--red); }
     .not_configured .card-status { color: var(--muted); }
+
+    .card-detail {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--text-dim);
+      line-height: 1.4;
+      word-break: break-word;
+    }
 
     .dot {
       width: 7px;
@@ -151,6 +164,7 @@
     }
 
     .unavailable .dot,
+    .error .dot,
     .starting .dot { background: var(--red); }
     .not_configured .dot { background: var(--muted); }
 
@@ -352,17 +366,22 @@
       )
     }
 
-    const LABELS = { ok: 'Connected', unavailable: 'Unreachable', starting: 'Starting…', not_configured: 'Not provisioned' }
+    const LABELS = { ok: 'Connected', unavailable: 'Unreachable', error: 'Error', starting: 'Starting…', not_configured: 'Not provisioned' }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    }
 
     function renderGrid(integrations) {
       const grid = document.getElementById('grid')
       grid.innerHTML = integrations.map(i => `
         <div class="card ${i.status}">
-          <div class="card-name">${i.name}</div>
+          <div class="card-name">${escapeHtml(i.name)}</div>
           <div class="card-status">
             <div class="dot"></div>
             <span>${LABELS[i.status] ?? i.status}</span>
           </div>
+          ${i.detail ? `<div class="card-detail">${escapeHtml(i.detail)}</div>` : ''}
         </div>
       `).join('')
     }
