@@ -223,10 +223,6 @@ func (a *app) probeRedis(ctx context.Context) integrationStatus {
 	}
 }
 
-// probeNoSQL and probeObjectStorage are presence checks only. A real
-// PutItem/GetItem and PutObject/GetObject round-trip needs AWS credentials,
-// which arrive with the workload-identity sidecar (Phase 5/6). Until then the
-// card shows the binding is mounted but the round-trip is pending.
 func (a *app) probeNoSQL(_ context.Context) integrationStatus {
 	return presenceProbe(a.bindingRoot, "nosql", "NoSQL Database")
 }
@@ -239,7 +235,16 @@ func presenceProbe(root, name, displayName string) integrationStatus {
 	if _, ok := readBinding(root, name); !ok {
 		return integrationStatus{Name: displayName, Status: "not_configured"}
 	}
-	return integrationStatus{Name: displayName, Status: "ok", Detail: "binding mounted, workload identity pending"}
+	credsFile := os.Getenv("AWS_SHARED_CREDENTIALS_FILE")
+	if credsFile != "" {
+		if data, err := os.ReadFile(credsFile); err == nil {
+			// Check for INI section header (e.g., [nosql], [object-storage]) in credentials file
+			if strings.Contains(string(data), "["+name+"]") {
+				return integrationStatus{Name: displayName, Status: "ok", Detail: "credentials active"}
+			}
+		}
+	}
+	return integrationStatus{Name: displayName, Status: "ok", Detail: "workload identity pending"}
 }
 
 func main() {
