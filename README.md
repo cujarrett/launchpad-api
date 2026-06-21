@@ -1,22 +1,66 @@
 # launchpad-api
 
-The Go backend for [launchpad](https://github.com/cujarrett/launchpad). A form submission comes in, this binary commits YAML to GitHub, ArgoCD picks it up, Crossplane provisions the workload. The write path never touches the Kubernetes API — GitHub is the source of truth.
+Go backend for [Launchpad](https://github.com/cujarrett/launchpad). Two paths, strictly separated:
 
-The read path runs the opposite direction: a Kubernetes dynamic client watches all platform XR kinds and fans out status events over SSE to every connected browser.
+- **Write** — a form submission commits platform XR YAML to GitHub. ArgoCD syncs it. Crossplane provisions it. This binary never touches the Kubernetes API on the write path.
+- **Read** — a Kubernetes dynamic client watches all platform XR kinds and fans status events out over SSE to every connected browser tab.
 
-Stdlib only — no web framework. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for the full architecture.
+GitHub is the source of truth. The cluster is the execution engine.
+
+## How it works
+
+```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 40, 'rankSpacing': 55}}}%%
+flowchart LR
+    subgraph write["Write path"]
+        w1["POST /workspaces/:name/resources"]
+        w2["Render XR YAML\nfrom template"]
+        w3["Commit to GitHub\nhomelab-workspaces"]
+        w4["ArgoCD sync\nCrossplane apply"]
+        w1 --> w2 --> w3 --> w4
+    end
+
+    subgraph read["Read path"]
+        r1["Kubernetes watch\nall platform XR kinds"]
+        r2["SSE fan-out\n/status/watch"]
+        r3["Browser tabs"]
+        r1 --> r2 --> r3
+    end
+```
+
+Stdlib only — no web framework.
+
+## Guest sandbox
+
+Unauthenticated users get a sandbox — a 10-minute real workload against the real cluster. The API:
+
+1. Picks a slot (`demo1`–`demo5`) from a fixed pool to bound AWS resource creation
+2. Picks a random two-word name (`cosmic-anvil`, `golden-llama`)
+3. Commits `namespace.yaml` + XR YAML for each selected resource to GitHub
+4. Returns `{ name, expiresAt }` — the browser polls status over SSE
+
+A cleanup goroutine runs every minute, reads `guest.yaml` from each workspace directory, and deletes expired workspaces by removing their files from GitHub. ArgoCD propagates the deletion.
+
+Guest resources share one SPIRE trust anchor and the same cluster but get isolated namespaces, scoped IAM roles, and independent service bindings.
+
+## Auth
+
+Contributor endpoints require a valid JWT from Azure Entra ID, validated against the JWKS endpoint. Guest endpoints are unauthenticated but capped: 5 active sandboxes, 10 resources each.
+
+`ENTRA_AUTH_DISABLED=true` bypasses JWT validation for local dev — blocked on port 443 in production.
 
 ## Local dev
 
 ```bash
-# Set LAUNCHPAD_API (GitHub PAT, contents:write on homelab-workspaces)
-# Set ENTRA_TENANT_ID and ENTRA_API_CLIENT_ID from your Azure app registration
-# Set ENTRA_AUTH_DISABLED=true to skip JWT validation locally
+# Required
+export LAUNCHPAD_API=<github-pat>        # contents:write on cujarrett/homelab-workspaces
+export ENTRA_TENANT_ID=<tenant-guid>
+export ENTRA_API_CLIENT_ID=<client-id>
+
+# Skip auth locally
+export ENTRA_AUTH_DISABLED=true
 
 just run
-```
-
-```bash
 curl http://localhost:8080/healthz
 ```
 
@@ -38,18 +82,15 @@ curl http://localhost:8080/healthz
 | `ENTRA_TENANT_ID` | yes | Azure Entra ID tenant GUID |
 | `ENTRA_API_CLIENT_ID` | yes | Client ID of the API app registration |
 | `PORT` | no | HTTP listen port (default `8080`) |
-| `ENTRA_AUTH_DISABLED` | no | `true` to skip JWT validation locally — blocked on port 443 |
+| `ENTRA_AUTH_DISABLED` | no | `true` to skip JWT validation — blocked on port 443 |
+| `GUEST_IMAGE` | no | Container image for guest API deployments |
+| `GUEST_SPA_IMAGE` | no | Container image for guest SPA deployments |
 
 ## Deployment
 
-ARM64 Docker image built by CI and pushed to GHCR. Deployed as an XApi Crossplane XR in the cluster via ArgoCD. The XR mounts a `launchpad-secrets` K8s secret as `envFrom`, injecting `LAUNCHPAD_API`, `ENTRA_TENANT_ID`, and `ENTRA_API_CLIENT_ID` into the pod.
+ARM64 Docker image built by CI, pushed to GHCR, deployed as an `XApi` XR via ArgoCD. A `launchpad-secrets` Kubernetes Secret injects `LAUNCHPAD_API`, `ENTRA_TENANT_ID`, and `ENTRA_API_CLIENT_ID` via `envFrom`.
 
 ### Rotating `LAUNCHPAD_API`
-
-`LAUNCHPAD_API` is a GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces`. Rotate it when the PAT expires or is compromised.
-
-1. Generate a new PAT in GitHub with `contents: write` on `cujarrett/homelab-workspaces`
-2. Patch the secret (avoids the value appearing in shell history):
 
 ```bash
 read -rs NEW_TOKEN
@@ -57,12 +98,6 @@ kubectl patch secret launchpad-secrets -n launchpad \
   --type='json' \
   -p='[{"op":"replace","path":"/data/LAUNCHPAD_API","value":"'"$(echo -n "$NEW_TOKEN" | base64)"'"}]'
 unset NEW_TOKEN
-```
 
-3. Restart the deployment — env vars are injected at pod startup, so a restart is required:
-
-```bash
 kubectl rollout restart deployment/launchpad-api -n launchpad
 ```
-
-4. Verify by opening `https://launchpad.mattjarrett.dev` and confirming workspace XR commits succeed in sandbox.
