@@ -9,23 +9,27 @@ GitHub is the source of truth. The cluster is the execution engine.
 
 ## How it works
 
+**Write path**
+
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 40, 'rankSpacing': 55}}}%%
 flowchart LR
-    subgraph write["Write path"]
-        w1["POST /workspaces/:name/resources"]
-        w2["Render XR YAML\nfrom template"]
-        w3["Commit to GitHub\nhomelab-workspaces"]
-        w4["ArgoCD sync\nCrossplane apply"]
-        w1 --> w2 --> w3 --> w4
-    end
+    w1["POST /workspaces/:name/resources"]
+    w2["Render XR YAML\nfrom template"]
+    w3["Commit to GitHub\nhomelab-workspaces"]
+    w4["ArgoCD sync\nCrossplane apply"]
+    w1 --> w2 --> w3 --> w4
+```
 
-    subgraph read["Read path"]
-        r1["Kubernetes watch\nall platform XR kinds"]
-        r2["SSE fan-out\n/status/watch"]
-        r3["Browser tabs"]
-        r1 --> r2 --> r3
-    end
+**Read path**
+
+```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 40, 'rankSpacing': 55}}}%%
+flowchart LR
+    r1["Kubernetes watch\nall platform XR kinds"]
+    r2["SSE fan-out\n/status/watch"]
+    r3["Browser tabs"]
+    r1 --> r2 --> r3
 ```
 
 Stdlib only — no web framework.
