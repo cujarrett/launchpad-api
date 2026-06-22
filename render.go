@@ -39,7 +39,7 @@ func RenderResource(r writeRequest) (string, error) {
 
 // RenderNamespace renders a namespace manifest.
 func RenderNamespace(name string) string {
-	return fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n", name)
+	return fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n  annotations:\n    linkerd.io/inject: enabled\n", name)
 }
 
 // ────────────────────────────────────────────────
