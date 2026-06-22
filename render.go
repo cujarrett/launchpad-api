@@ -55,7 +55,11 @@ spec:
     namespace: {{ .Params.namespace }}
     image: {{ .Params.image }}
     host: {{ .Params.host }}
+{{- if .Params.tlsSecret }}
+    tlsSecret: {{ .Params.tlsSecret }}
+{{- else }}
     tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" }}
+{{- end }}
     replicas: {{ or .Params.replicas 1 }}
 {{- if .Params.contentSecurityPolicy }}
     contentSecurityPolicy: {{ .Params.contentSecurityPolicy }}
@@ -74,7 +78,11 @@ spec:
     replicas: {{ or .Params.replicas 1 }}
 {{- if .Params.host }}
     host: {{ .Params.host }}
+{{- if .Params.tlsSecret }}
+    tlsSecret: {{ .Params.tlsSecret }}
+{{- else }}
     tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" }}
+{{- end }}
 {{- end }}
 {{- if .Params.sqlRef }}
     sqlRef:

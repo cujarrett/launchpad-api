@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 const (
@@ -157,6 +159,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	a.copyDemoTLSSecrets(ctx, slot, fullName)
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
 	a.triggerAppSetRefresh()
 	w.WriteHeader(http.StatusCreated)
@@ -318,7 +321,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 			p["cache"] = true
 		}
 		p["host"] = fmt.Sprintf("%s-api.mattjarrett.dev", slot)
-		p["tlsIssuer"] = "letsencrypt-prod"
+		p["tlsSecret"] = slot + "-api-tls"
 		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
@@ -337,7 +340,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 	case "XSpa":
 		p["image"] = image
 		p["host"] = fmt.Sprintf("%s.mattjarrett.dev", slot)
-		p["tlsIssuer"] = "letsencrypt-prod"
+		p["tlsSecret"] = slot + "-tls"
 		// hello-world-spa uses inline <style>/<script> and fetches the companion API
 		// on a different subdomain — relax CSP accordingly.
 		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"
@@ -638,6 +641,37 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 	return base, nil
 }
 
+
+// copyDemoTLSSecrets copies the pre-provisioned demo slot TLS secrets from the
+// demo-certs namespace into the guest workspace namespace so the Ingress can
+// reference them directly without triggering cert-manager issuance.
+func (a *app) copyDemoTLSSecrets(ctx context.Context, slot, targetNamespace string) {
+	if a.dynClient == nil {
+		slog.Warn("copyDemoTLSSecrets: no k8s client, skipping")
+		return
+	}
+	secretGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}
+	secretNames := []string{slot + "-api-tls", slot + "-tls"}
+	for _, name := range secretNames {
+		src, err := a.dynClient.Resource(secretGVR).Namespace("demo-certs").Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			slog.Warn("copyDemoTLSSecrets: get source secret", "name", name, "err", err)
+			continue
+		}
+		dst := src.DeepCopy()
+		dst.SetNamespace(targetNamespace)
+		dst.SetResourceVersion("")
+		dst.SetUID("")
+		dst.SetCreationTimestamp(metav1.Time{})
+		dst.SetOwnerReferences(nil)
+		_, err = a.dynClient.Resource(secretGVR).Namespace(targetNamespace).Create(ctx, dst, metav1.CreateOptions{})
+		if err != nil {
+			slog.Warn("copyDemoTLSSecrets: create secret in guest namespace", "name", name, "namespace", targetNamespace, "err", err)
+		} else {
+			slog.Info("copyDemoTLSSecrets: copied", "name", name, "namespace", targetNamespace)
+		}
+	}
+}
 
 func sliceContains(s []string, v string) bool {
 	for _, x := range s {

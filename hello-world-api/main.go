@@ -75,8 +75,8 @@ type app struct {
 func newApp(bindingRoot string) *app {
 	a := &app{bindingRoot: bindingRoot}
 	a.probes = []namedProbe{
-		{"PostgreSQL", a.probePostgres},
-		{"Redis", a.probeRedis},
+		{"SQL Database", a.probePostgres},
+		{"Cache", a.probeRedis},
 		{"NoSQL Database", a.probeNoSQL},
 		{"Object Storage", a.probeObjectStorage},
 	}
@@ -132,7 +132,7 @@ func (a *app) pgPool(ctx context.Context, b binding) (*pgxpool.Pool, error) {
 // visit-counter table and reads the running total back. The detail string is
 // the proof the integration works, not just that the port is open.
 func (a *app) probePostgres(ctx context.Context) integrationStatus {
-	const name = "PostgreSQL"
+	const name = "SQL Database"
 	b, ok := readBinding(a.bindingRoot, "sql")
 	if !ok {
 		return integrationStatus{Name: name, Status: "not_configured"}
@@ -198,7 +198,7 @@ func (a *app) redisClient(ctx context.Context, b binding) (*redis.Client, error)
 // probeRedis performs a real round-trip: it increments a visit counter and
 // reads the new value back.
 func (a *app) probeRedis(ctx context.Context) integrationStatus {
-	const name = "Redis"
+	const name = "Cache"
 	b, ok := readBinding(a.bindingRoot, "cache")
 	if !ok {
 		return integrationStatus{Name: name, Status: "not_configured"}
