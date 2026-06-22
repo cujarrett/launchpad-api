@@ -295,6 +295,7 @@ func main() {
 }
 
 func (a *app) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	for _, i := range a.checkIntegrations(r.Context()) {
 		if i.Status != "ok" && i.Status != "not_configured" {
 			w.WriteHeader(http.StatusServiceUnavailable)
