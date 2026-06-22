@@ -25,7 +25,7 @@ const (
 // isValidWord checks if a word is a valid guest name component:
 // lowercase alphanumeric, 2-8 chars, no special chars.
 func isValidWord(w string) bool {
-	if len(w) < 2 || len(w) > 8 {
+	if len(w) < 2 || len(w) > 12 {
 		return false
 	}
 	for _, c := range w {
