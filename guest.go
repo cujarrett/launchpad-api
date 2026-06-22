@@ -22,6 +22,20 @@ const (
 	guestMaxResources = 10
 )
 
+// isValidWord checks if a word is a valid guest name component:
+// lowercase alphanumeric, 2-8 chars, no special chars.
+func isValidWord(w string) bool {
+	if len(w) < 2 || len(w) > 8 {
+		return false
+	}
+	for _, c := range w {
+		if !('a' <= c && c <= 'z' || '0' <= c && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // allowedGuestKinds is the set of resource kinds guests may create.
 // XWordpress is excluded (too heavy / production data risk).
 // XSubscription is excluded (requires a topicRef pointing to an existing topic).
@@ -52,27 +66,6 @@ func (a *app) handleListGuestWorkspaces(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, workspaces)
 }
 
-// guestWords1 and guestWords2 are combined at random to form workspace names.
-// 25 × 25 = 625 possible combinations, keeping names fun and unpredictable.
-// Word length constraint: IAM role names are capped at 64 chars. The tightest
-// pattern is crossplane-guest-{slug}-xapi-{slug}-nosql (29 + 2×|slug|), so
-// |slug| = |word1| + 1 + |word2| must be ≤ 17, i.e. |word1|+|word2| ≤ 16.
-// All words here are ≤ 8 chars; pickGuestName filters any survivors above the limit.
-var guestWords1 = []string{
-	"atomic", "banana", "blazing", "chrome", "cosmic",
-	"disco", "electric", "booming", "frozen", "fuzzy",
-	"golden", "haunted", "jazzy", "laser", "magic",
-	"midnight", "neon", "phantom", "quantum", "rubber",
-	"shadow", "silver", "turbo", "velvet", "wacky",
-}
-
-var guestWords2 = []string{
-	"anvil", "burrito", "cactus", "cannon", "cassette",
-	"catapult", "factory", "hamster", "jelly", "llama",
-	"napkin", "penguin", "pickle", "pirate", "pretzel",
-	"rocket", "spatula", "scroll", "sphinx", "taco",
-	"toaster", "tornado", "volcano", "waffle", "wizard",
-}
 
 // guestSlots are the fixed DNS slots — each maps to a pre-configured public hostname.
 // Slots are assigned at workspace creation time and stored in guest.yaml.
@@ -123,8 +116,9 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	// Honour the suggested name if it is valid and unused.
 	var fullName string
 	if suggested := strings.TrimSpace(body.Name); suggested != "" {
+		// Validate format: two words separated by dash, lowercase alphanumeric
 		w1, w2, ok := strings.Cut(suggested, "-")
-		if ok && sliceContains(guestWords1, w1) && sliceContains(guestWords2, w2) {
+		if ok && isValidWord(w1) && isValidWord(w2) {
 			candidateFull := guestPrefix + suggested
 			if usedNames[candidateFull] {
 				// Name is valid but already taken — tell the client so it can reroll.
@@ -135,12 +129,9 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if fullName == "" {
-		fullName, err = pickGuestName(usedNames)
-		if err != nil {
-			slog.Error("create guest workspace: pick name", "err", err)
-			http.Error(w, "no sandbox names available — try again shortly", http.StatusServiceUnavailable)
-			return
-		}
+		// No valid suggestion provided — frontend must suggest a name
+		http.Error(w, "invalid or missing workspace name", http.StatusBadRequest)
+		return
 	}
 
 	slot, err := pickGuestSlot(usedSlots)
@@ -647,32 +638,6 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 	return base, nil
 }
 
-// pickGuestName returns a random word1-word2 combination that isn't already in use.
-// With 625 combinations and at most 5 slots occupied, candidates is never empty.
-func pickGuestName(used map[string]bool) (string, error) {
-	candidates := make([]string, 0, len(guestWords1)*len(guestWords2))
-	for _, w1 := range guestWords1 {
-		for _, w2 := range guestWords2 {
-			// IAM role names are capped at 64 chars; tightest pattern adds 29
-			// chars of fixed overhead, leaving 17 for the slug (word1-word2).
-			if len(w1)+len(w2) > 16 {
-				continue
-			}
-			full := guestPrefix + w1 + "-" + w2
-			if !used[full] {
-				candidates = append(candidates, full)
-			}
-		}
-	}
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("all guest names in use")
-	}
-	b := make([]byte, 2)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return candidates[(int(b[0])<<8|int(b[1]))%len(candidates)], nil
-}
 
 func sliceContains(s []string, v string) bool {
 	for _, x := range s {
