@@ -7,44 +7,55 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // upsertFile creates or updates a file in the GitHub repo using the write token.
+// Retries once on 409 (Conflict) by re-fetching the SHA, which handles the case
+// where currentSHA returned "" due to a transient GitHub error but the file exists.
 func (c *githubClient) upsertFile(ctx context.Context, path, message, content string) error {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", c.owner, c.repo, path)
+	encoded := base64.StdEncoding.EncodeToString([]byte(content))
 
-	sha := c.currentSHA(ctx, url)
+	for attempt := range 2 {
+		sha := c.currentSHA(ctx, url)
 
-	body := map[string]any{
-		"message": message,
-		"content": base64.StdEncoding.EncodeToString([]byte(content)),
-	}
-	if sha != "" {
-		body["sha"] = sha
-	}
+		body := map[string]any{
+			"message": message,
+			"content": encoded,
+		}
+		if sha != "" {
+			body["sha"] = sha
+		}
 
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(raw))
-	if err != nil {
-		return err
-	}
-	c.setHeaders(req)
-	req.Header.Set("Content-Type", "application/json")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(raw))
+		if err != nil {
+			return err
+		}
+		c.setHeaders(req)
+		req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+			return nil
+		}
+		if resp.StatusCode == http.StatusConflict && attempt == 0 {
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
 		return fmt.Errorf("github upsert %s: status %d", path, resp.StatusCode)
 	}
-	return nil
+	return fmt.Errorf("github upsert %s: exhausted retries", path)
 }
 
 // deleteFile deletes a file from the GitHub repo.
