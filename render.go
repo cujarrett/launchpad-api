@@ -131,6 +131,12 @@ spec:
 {{- if .Params.size }}
     size: {{ .Params.size }}
 {{- end }}
+{{- if .Params.consumerServiceAccounts }}
+    consumerServiceAccounts:
+{{- range .Params.consumerServiceAccounts }}
+      - {{ . }}
+{{- end }}
+{{- end }}
 `
 
 const xnosqlTemplate = `apiVersion: platform.local.lab/v1alpha1
