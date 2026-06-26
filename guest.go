@@ -325,15 +325,14 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
-			// SQL, NoSQL, and ObjectStorage are all auto-wired when present.
-			if strings.HasPrefix(base, "xsql-") {
+			// Support both short names (new: sql, nosql, store) and old prefixed names (xsql-, xnosql-, xobjectstorage-).
+			if base == "sql" || strings.HasPrefix(base, "sql-") || strings.HasPrefix(base, "xsql-") {
 				p["sqlRef"] = base
 			}
-			// NoSQL and ObjectStorage are always auto-wired when present.
-			if strings.HasPrefix(base, "xnosql-") {
+			if base == "nosql" || strings.HasPrefix(base, "nosql-") || strings.HasPrefix(base, "xnosql-") {
 				p["nosqlRef"] = base
 			}
-			if strings.HasPrefix(base, "xobjectstorage-") {
+			if base == "store" || strings.HasPrefix(base, "store-") || strings.HasPrefix(base, "xobjectstorage-") {
 				p["objectStorageRefs"] = base
 			}
 		}
@@ -379,7 +378,7 @@ func (a *app) updateGuestApiRefs(ctx context.Context, workspace, slot string, gu
 		}
 		seen[e.Name] = true
 		fileNames = append(fileNames, e.Name)
-		if strings.HasPrefix(e.Name, "xapi-") && strings.HasSuffix(e.Name, ".yaml") {
+		if (e.Name == "api.yaml" || strings.HasPrefix(e.Name, "api-") || strings.HasPrefix(e.Name, "xapi-")) && strings.HasSuffix(e.Name, ".yaml") {
 			apiName = strings.TrimSuffix(e.Name, ".yaml")
 		}
 	}
@@ -429,7 +428,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a guest workspace", http.StatusForbidden)
 		return
 	}
-	if !strings.HasPrefix(resourceName, "xapi-") {
+	if resourceName != "api" && !strings.HasPrefix(resourceName, "api-") && !strings.HasPrefix(resourceName, "xapi-") {
 		http.Error(w, "only XApi resources can be patched", http.StatusBadRequest)
 		return
 	}
@@ -624,15 +623,25 @@ func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 	slog.Info("guest cleanup: workspace cleaned", "workspace", name)
 }
 
-// generateResourceName returns a server-assigned name like "xapi-a3f2".
-// generateGuestResourceName builds a resource name that carries the workspace's
-// two-word slug: e.g. workspace "guest-midnight-submarine" → "xapi-midnight-submarine".
-// A short random hex suffix is appended only when a resource with that base name
-// already exists in the workspace (duplicate kind).
+// generateGuestResourceName returns a short, fixed name per kind (e.g. "api", "store").
+// Resources are namespace-scoped, so the workspace slug does not need to repeat in the name.
+// Shorter names keep IAM role names under AWS's 64-char limit regardless of workspace slug length.
+// A 2-byte random hex suffix is appended only when a resource with that base name already exists.
 func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (string, error) {
-	kindPrefix := strings.ToLower(kind)
-	slug := strings.TrimPrefix(workspaceName, guestPrefix) // "midnight-submarine"
-	base := fmt.Sprintf("%s-%s", kindPrefix, slug)         // "xapi-midnight-submarine"
+	kindShortNames := map[string]string{
+		"XApi":           "api",
+		"XSpa":           "spa",
+		"XSql":           "sql",
+		"XNoSql":         "nosql",
+		"XObjectStorage": "store",
+		"XTopic":         "topic",
+		"XSubscription":  "sub",
+		"XWordpress":     "wordpress",
+	}
+	base, ok := kindShortNames[kind]
+	if !ok {
+		base = strings.ToLower(kind)
+	}
 
 	// Check if a file with this base name is already present.
 	for _, e := range existing {
