@@ -24,6 +24,33 @@ const (
 	guestMaxResources = 10
 )
 
+var (
+	errWorkspaceNotFound = fmt.Errorf("workspace not found")
+	errWorkspaceExpired  = fmt.Errorf("workspace expired")
+)
+
+// validateGuestWorkspace reads guest.yaml directly from the workspace path and
+// returns the slot string. This avoids the root listDir call in loadGuestWorkspaces
+// which can return a stale CDN-cached response for a brand-new directory.
+func (a *app) validateGuestWorkspace(ctx context.Context, workspaceName string) (string, error) {
+	metaContent, err := a.gh.fileContent(ctx, workspaceName+"/guest.yaml")
+	if err != nil {
+		return "", errWorkspaceNotFound
+	}
+	var meta struct {
+		CreatedAt string `yaml:"createdAt"`
+		Slot      string `yaml:"slot"`
+	}
+	if err := yaml.Unmarshal(metaContent, &meta); err != nil {
+		return "", err
+	}
+	t, err := time.Parse(time.RFC3339, meta.CreatedAt)
+	if err != nil || time.Now().After(t.Add(guestTTL)) {
+		return "", errWorkspaceExpired
+	}
+	return meta.Slot, nil
+}
+
 // isValidWord checks if a word is a valid guest name component:
 // lowercase alphanumeric, 2-8 chars, no special chars.
 func isValidWord(w string) bool {
@@ -200,29 +227,21 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 
 	// Verify the workspace exists and has not expired.
-	workspaces, err := a.loadGuestWorkspaces(ctx)
-	if err != nil {
-		slog.Error("create guest resource: load workspaces", "err", err)
-		http.Error(w, "upstream error", http.StatusBadGateway)
+	// Read guest.yaml directly rather than via loadGuestWorkspaces (which does a
+	// root listDir that may return a stale CDN-cached response for a brand-new
+	// workspace directory, causing the first resource POST to get a 404).
+	wsSlot, err := a.validateGuestWorkspace(ctx, workspaceName)
+	if err == errWorkspaceNotFound {
+		http.NotFound(w, r)
 		return
 	}
-	var live bool
-	var wsSlot string
-	for _, ws := range workspaces {
-		if ws.Name != workspaceName {
-			continue
-		}
-		expiry, parseErr := time.Parse(time.RFC3339, ws.ExpiresAt)
-		if parseErr != nil || time.Now().After(expiry) {
-			http.Error(w, "guest workspace has expired", http.StatusGone)
-			return
-		}
-		wsSlot = ws.Slot
-		live = true
-		break
+	if err == errWorkspaceExpired {
+		http.Error(w, "guest workspace has expired", http.StatusGone)
+		return
 	}
-	if !live {
-		http.NotFound(w, r)
+	if err != nil {
+		slog.Error("create guest resource: validate workspace", "err", err)
+		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
 
