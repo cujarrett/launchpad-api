@@ -23,6 +23,10 @@ func (c *githubClient) upsertFile(ctx context.Context, path, message, content st
 		body := map[string]any{
 			"message": message,
 			"content": encoded,
+			"committer": map[string]string{
+				"name":  "launchpad",
+				"email": "launchpad@homelab",
+			},
 		}
 		if sha != "" {
 			body["sha"] = sha
@@ -71,6 +75,10 @@ func (c *githubClient) deleteFile(ctx context.Context, path, message string) err
 	body := map[string]any{
 		"message": message,
 		"sha":     sha,
+		"committer": map[string]string{
+			"name":  "launchpad",
+			"email": "launchpad@homelab",
+		},
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
