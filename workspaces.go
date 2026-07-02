@@ -21,9 +21,17 @@ import (
 var validWorkspaceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$`)
 
 type workspaceJSON struct {
-	Name      string  `json:"name"`
-	IsGuest   bool    `json:"isGuest"`
-	ExpiresAt *string `json:"expiresAt,omitempty"`
+	Name       string            `json:"name"`
+	IsGuest    bool              `json:"isGuest"`
+	ExpiresAt  *string           `json:"expiresAt,omitempty"`
+	PhaseTimes map[string]string `json:"phaseTimes,omitempty"`
+	DoneAt     *string           `json:"doneAt,omitempty"`
+}
+
+type guestMeta struct {
+	expiry     *time.Time
+	phaseTimes map[string]string
+	doneAt     *string
 }
 
 type resourceJSON struct {
@@ -71,10 +79,13 @@ func (a *app) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 			wg.Add(1)
 			go func(idx int, wsName string) {
 				defer wg.Done()
-				if expiry := a.fetchGuestExpiry(r.Context(), wsName); expiry != nil {
-					s := expiry.Format(time.RFC3339)
+				meta := a.fetchGuestMeta(r.Context(), wsName)
+				if meta.expiry != nil {
+					s := meta.expiry.Format(time.RFC3339)
 					workspaces[idx].ExpiresAt = &s
 				}
+				workspaces[idx].PhaseTimes = meta.phaseTimes
+				workspaces[idx].DoneAt = meta.doneAt
 			}(i, name)
 		}
 	}
@@ -295,23 +306,38 @@ func (a *app) doArgoSyncPatch(workspace string) {
 	})
 }
 
-// fetchGuestExpiry reads a guest workspace's guest.yaml and returns the expiry time.
-// Returns nil on any error so the workspace is still listed without expiry data.
-func (a *app) fetchGuestExpiry(ctx context.Context, workspace string) *time.Time {
+// fetchGuestMeta reads guest.yaml and returns expiry, phase timestamps, and doneAt.
+// Returns zero-value struct on any error so the workspace is still listed without metadata.
+func (a *app) fetchGuestMeta(ctx context.Context, workspace string) guestMeta {
 	content, err := a.gh.fileContent(ctx, workspace+"/guest.yaml")
 	if err != nil {
-		return nil
+		return guestMeta{}
 	}
-	var meta struct {
-		CreatedAt string `yaml:"createdAt"`
+	var raw struct {
+		CreatedAt  string            `yaml:"createdAt"`
+		PhaseTimes map[string]string `yaml:"phaseTimes,omitempty"`
+		DoneAt     string            `yaml:"doneAt,omitempty"`
 	}
-	if err := yaml.Unmarshal(content, &meta); err != nil {
-		return nil
+	if err := yaml.Unmarshal(content, &raw); err != nil {
+		return guestMeta{}
 	}
-	t, err := time.Parse(time.RFC3339, meta.CreatedAt)
+	t, err := time.Parse(time.RFC3339, raw.CreatedAt)
 	if err != nil {
-		return nil
+		return guestMeta{}
 	}
 	expiry := t.Add(guestTTL)
-	return &expiry
+	var doneAt *string
+	if raw.DoneAt != "" {
+		doneAt = &raw.DoneAt
+	}
+	var phaseTimes map[string]string
+	if len(raw.PhaseTimes) > 0 {
+		phaseTimes = raw.PhaseTimes
+	}
+	return guestMeta{expiry: &expiry, phaseTimes: phaseTimes, doneAt: doneAt}
+}
+
+// fetchGuestExpiry is a thin wrapper kept for the cleanup loop.
+func (a *app) fetchGuestExpiry(ctx context.Context, workspace string) *time.Time {
+	return a.fetchGuestMeta(ctx, workspace).expiry
 }

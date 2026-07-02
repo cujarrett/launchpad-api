@@ -55,6 +55,7 @@ func main() {
 	}
 
 	go startWatcher(ctx, b, dynClient)
+	go startPodWatcher(ctx, b, dynClient)
 	go a.startGuestCleanup(ctx)
 
 	api := http.NewServeMux()
@@ -78,6 +79,7 @@ func main() {
 	mux.HandleFunc("POST /api/guest/workspaces", a.handleCreateGuestWorkspace)
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources", a.handleCreateGuestResource)
 	mux.HandleFunc("PATCH /api/guest/workspaces/{name}/resources/{resource}", a.handlePatchGuestResource)
+	mux.HandleFunc("POST /api/guest/workspaces/{name}/phases", a.handleRecordGuestPhase)
 	mux.Handle("/", auth.requireAuth(api))
 
 	srv := &http.Server{

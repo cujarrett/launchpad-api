@@ -542,6 +542,82 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleRecordGuestPhase records a phase timestamp in guest.yaml.
+// Called by the SPA as each provisioning phase transitions, so timings persist
+// across browsers and users. Body: { "phase": "1" }. No auth required.
+func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
+	workspaceName := r.PathValue("name")
+	if !strings.HasPrefix(workspaceName, guestPrefix) {
+		http.Error(w, "not a guest workspace", http.StatusForbidden)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 256)
+	var req struct {
+		Phase string `json:"phase"`
+		Done  bool   `json:"done"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	// Validate phase is a single digit 0-4 or empty (done path uses Done:true instead).
+	// Prevents injection into YAML keys and the git commit message.
+	validPhases := map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "": true}
+	if !validPhases[req.Phase] {
+		http.Error(w, "invalid phase", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	metaPath := workspaceName + "/guest.yaml"
+	content, err := a.gh.fileContent(ctx, metaPath)
+	if err != nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	var raw struct {
+		CreatedAt  string            `yaml:"createdAt"`
+		Slot       string            `yaml:"slot"`
+		PhaseTimes map[string]string `yaml:"phaseTimes,omitempty"`
+		DoneAt     string            `yaml:"doneAt,omitempty"`
+	}
+	if err := yaml.Unmarshal(content, &raw); err != nil {
+		http.Error(w, "failed to parse workspace metadata", http.StatusInternalServerError)
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if req.Done {
+		if raw.DoneAt == "" {
+			raw.DoneAt = now
+		}
+	} else if req.Phase != "" {
+		if raw.PhaseTimes == nil {
+			raw.PhaseTimes = make(map[string]string)
+		}
+		if _, exists := raw.PhaseTimes[req.Phase]; !exists {
+			raw.PhaseTimes[req.Phase] = now
+		}
+	}
+
+	updated, err := yaml.Marshal(raw)
+	if err != nil {
+		http.Error(w, "failed to serialize metadata", http.StatusInternalServerError)
+		return
+	}
+	if err := a.gh.upsertFile(ctx, metaPath, "chore: record phase "+req.Phase+" for "+workspaceName, string(updated)); err != nil {
+		slog.Warn("record guest phase: upsert", "workspace", workspaceName, "phase", req.Phase, "err", err)
+		http.Error(w, "failed to persist phase time", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // loadGuestWorkspaces lists all live guest-* workspaces with their expiry times,
 // sorted oldest-first (for the "hogging the sandbox" cap message).
 func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, error) {
@@ -610,18 +686,27 @@ func (a *app) startGuestCleanup(ctx context.Context) {
 }
 
 func (a *app) cleanupExpiredGuests(ctx context.Context) {
-	workspaces, err := a.loadGuestWorkspaces(ctx)
+	entries, err := a.gh.listDir(ctx, "")
 	if err != nil {
-		slog.Error("guest cleanup: load workspaces", "err", err)
+		slog.Error("guest cleanup: list root", "err", err)
 		return
 	}
-	for _, ws := range workspaces {
-		expiry, err := time.Parse(time.RFC3339, ws.ExpiresAt)
-		if err != nil || time.Now().Before(expiry) {
+	for _, e := range entries {
+		if e.Type != "dir" || !strings.HasPrefix(e.Name, guestPrefix) {
 			continue
 		}
-		slog.Info("guest cleanup: deleting expired workspace", "workspace", ws.Name)
-		a.deleteGuestWorkspaceFiles(ctx, ws.Name)
+		expiry := a.fetchGuestExpiry(ctx, e.Name)
+		if expiry == nil {
+			// guest.yaml missing or unreadable. Skip rather than delete: a transient
+			// GitHub API error returns nil here too, and false-deleting a live workspace
+			// is worse than leaving a zombie behind.
+			slog.Warn("guest cleanup: could not read expiry, skipping", "workspace", e.Name)
+			continue
+		}
+		if time.Now().After(*expiry) {
+			slog.Info("guest cleanup: deleting expired workspace", "workspace", e.Name)
+			a.deleteGuestWorkspaceFiles(ctx, e.Name)
+		}
 	}
 }
 
