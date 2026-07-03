@@ -129,6 +129,13 @@ func watchResource(ctx context.Context, client dynamic.Interface, b *broadcaster
 				if !ok {
 					continue
 				}
+				if event.Type == watch.Deleted {
+					s := extractStatus(obj, res.kind)
+					if s != nil {
+						b.evict(s.Workspace, s.Kind, s.Name)
+					}
+					continue
+				}
 				s := extractStatus(obj, res.kind)
 				if s == nil {
 					continue
@@ -274,6 +281,13 @@ func watchPods(ctx context.Context, client dynamic.Interface, b *broadcaster) {
 				}
 				obj, ok := event.Object.(*unstructured.Unstructured)
 				if !ok {
+					continue
+				}
+				if event.Type == watch.Deleted {
+					ns := obj.GetNamespace()
+					if strings.HasPrefix(ns, "guest-") {
+						b.evict(ns, "Pod", obj.GetName())
+					}
 					continue
 				}
 				if s := extractPodStatus(obj); s != nil {

@@ -53,3 +53,10 @@ func (b *broadcaster) publish(s ResourceStatus) {
 	}
 	b.mu.Unlock()
 }
+
+func (b *broadcaster) evict(workspace, kind, name string) {
+	key := workspace + "/" + kind + "/" + name
+	b.mu.Lock()
+	delete(b.cache, key)
+	b.mu.Unlock()
+}
