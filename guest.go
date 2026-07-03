@@ -65,18 +65,6 @@ func isValidWord(w string) bool {
 	return true
 }
 
-// allowedGuestKinds is the set of resource kinds guests may create.
-// XWordpress is excluded (too heavy / production data risk).
-// XSubscription is excluded (requires a topicRef pointing to an existing topic).
-var allowedGuestKinds = map[string]bool{
-	"XApi":           true,
-	"XSpa":           true,
-	"XSql":           true,
-	"XNoSql":         true,
-	"XObjectStorage": true,
-	"XTopic":         true,
-}
-
 type guestWorkspaceJSON struct {
 	Name      string `json:"name"`
 	Slot      string `json:"slot"`
@@ -94,7 +82,6 @@ func (a *app) handleListGuestWorkspaces(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, workspaces)
 }
-
 
 // guestSlots are the fixed DNS slots — each maps to a pre-configured public hostname.
 // Slots are assigned at workspace creation time and stored in guest.yaml.
@@ -198,9 +185,9 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// handleCreateGuestResource creates a resource inside an existing guest workspace.
-// Params are entirely auto-generated — guests supply only kind and name.
-func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) {
+// handleCreateGuestResourceBatch creates an XApi or XSpa plus any requested
+// add-ons (SQL, NoSQL, object storage, a paired SPA/API) in a single atomic commit.
+func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Request) {
 	workspaceName := r.PathValue("name")
 	if !strings.HasPrefix(workspaceName, guestPrefix) {
 		http.Error(w, "not a guest workspace", http.StatusForbidden)
@@ -209,16 +196,19 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 
 	r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
 	var req struct {
-		Kind      string `json:"kind"`
-		WithCache bool   `json:"withCache"`
-		WithSql   bool   `json:"withSql"`
+		Kind        string `json:"kind"`
+		WithCache   bool   `json:"withCache"`
+		WithSql     bool   `json:"withSql"`
+		WithNoSql   bool   `json:"withNoSql"`
+		WithStorage bool   `json:"withStorage"`
+		WithSpa     bool   `json:"withSpa"`
+		WithApi     bool   `json:"withApi"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-
-	if !allowedGuestKinds[req.Kind] {
+	if req.Kind != "XApi" && req.Kind != "XSpa" {
 		http.Error(w, fmt.Sprintf("kind %q is not available in guest workspaces", req.Kind), http.StatusUnprocessableEntity)
 		return
 	}
@@ -226,10 +216,6 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Verify the workspace exists and has not expired.
-	// Read guest.yaml directly rather than via loadGuestWorkspaces (which does a
-	// root listDir that may return a stale CDN-cached response for a brand-new
-	// workspace directory, causing the first resource POST to get a 404).
 	wsSlot, err := a.validateGuestWorkspace(ctx, workspaceName)
 	if err == errWorkspaceNotFound {
 		http.NotFound(w, r)
@@ -240,84 +226,112 @@ func (a *app) handleCreateGuestResource(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		slog.Error("create guest resource: validate workspace", "err", err)
+		slog.Error("create guest resource batch: validate workspace", "err", err)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
 
-	// Enforce per-workspace resource cap.
 	entries, err := a.gh.listDir(ctx, workspaceName)
 	if err != nil {
-		slog.Error("create guest resource: list files", "err", err)
+		slog.Error("create guest resource batch: list files", "err", err)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
-	// Count only resource files (exclude namespace.yaml and meta.yaml).
 	resourceCount := 0
 	for _, e := range entries {
 		if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
 			resourceCount++
 		}
 	}
-	if resourceCount >= guestMaxResources {
+
+	// Build the ordered plan of kinds to create, mirroring the guest-create UI.
+	var plan []string
+	switch req.Kind {
+	case "XApi":
+		if req.WithStorage {
+			plan = append(plan, "XObjectStorage")
+		}
+		if req.WithSql {
+			plan = append(plan, "XSql")
+		}
+		if req.WithNoSql {
+			plan = append(plan, "XNoSql")
+		}
+		if req.WithSpa {
+			plan = append(plan, "XSpa")
+		}
+		plan = append(plan, "XApi")
+	case "XSpa":
+		if req.WithApi {
+			plan = append(plan, "XApi")
+		}
+		plan = append(plan, "XSpa")
+	}
+
+	if resourceCount+len(plan) > guestMaxResources {
 		http.Error(w, fmt.Sprintf("guest workspaces are limited to %d resources", guestMaxResources), http.StatusTooManyRequests)
 		return
 	}
 
-	// Auto-generate all params — guests cannot inject arbitrary values.
-	var guestImage string
-	if req.Kind == "XSpa" {
-		guestImage = envOrDefault("GUEST_SPA_IMAGE", "ghcr.io/cujarrett/hello-world-spa:latest")
-	} else {
-		guestImage = envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
-	}
-	resourceName, err := generateGuestResourceName(req.Kind, workspaceName, entries)
-	if err != nil {
-		slog.Error("generate resource name", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	// Collect existing file names so XApi can auto-wire nosqlRef/objectStorageRef.
-	existingFileNames := make([]string, 0, len(entries))
+	// Generate a resource name for every planned kind up front, and collect the
+	// full sibling file list (existing + about-to-be-created) so XApi's
+	// sqlRef/nosqlRef/objectStorageRefs wiring is correct in a single pass —
+	// no re-read from GitHub needed between resources.
+	allFileNames := make([]string, 0, len(entries)+len(plan))
 	for _, e := range entries {
 		if e.Type == "file" {
-			existingFileNames = append(existingFileNames, e.Name)
+			allFileNames = append(allFileNames, e.Name)
 		}
 	}
-
-	wr := writeRequest{
-		Workspace: workspaceName,
-		Kind:      req.Kind,
-		Name:      resourceName,
-		Params:    buildGuestParams(workspaceName, wsSlot, resourceName, req.Kind, guestImage, existingFileNames, req.WithCache, req.WithSql),
+	names := make(map[string]string, len(plan)) // kind -> resourceName
+	for _, kind := range plan {
+		name, err := generateGuestResourceName(kind, workspaceName, entries)
+		if err != nil {
+			slog.Error("create guest resource batch: generate name", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		names[kind] = name
+		allFileNames = append(allFileNames, name+".yaml")
 	}
 
-	rendered, err := RenderResource(wr)
-	if err != nil {
-		slog.Error("render guest resource", "err", err)
-		http.Error(w, "render error", http.StatusInternalServerError)
+	files := make([]batchFile, 0, len(plan))
+	createdNames := make([]string, 0, len(plan))
+	for _, kind := range plan {
+		var guestImage string
+		if kind == "XSpa" {
+			guestImage = envOrDefault("GUEST_SPA_IMAGE", "ghcr.io/cujarrett/hello-world-spa:latest")
+		} else {
+			guestImage = envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
+		}
+		resourceName := names[kind]
+		wr := writeRequest{
+			Workspace: workspaceName,
+			Kind:      kind,
+			Name:      resourceName,
+			Params:    buildGuestParams(workspaceName, wsSlot, resourceName, kind, guestImage, allFileNames, req.WithCache, req.WithSql),
+		}
+		rendered, err := RenderResource(wr)
+		if err != nil {
+			slog.Error("render guest resource batch", "kind", kind, "err", err)
+			http.Error(w, "render error", http.StatusInternalServerError)
+			return
+		}
+		files = append(files, batchFile{
+			Path:    fmt.Sprintf("%s/%s.yaml", workspaceName, resourceName),
+			Content: rendered,
+		})
+		createdNames = append(createdNames, resourceName)
+	}
+
+	commitMsg := fmt.Sprintf("feat: create guest resources %s (%s)", workspaceName, strings.Join(createdNames, ", "))
+	if err := a.gh.upsertFilesAtomic(ctx, files, commitMsg); err != nil {
+		slog.Error("create guest resource batch", "workspace", workspaceName, "names", createdNames, "err", err)
+		http.Error(w, "failed to create resources", http.StatusInternalServerError)
 		return
 	}
 
-	path := fmt.Sprintf("%s/%s.yaml", workspaceName, resourceName)
-	commitMsg := fmt.Sprintf("feat: add guest resource %s/%s", workspaceName, resourceName)
-	if err := a.gh.upsertFile(ctx, path, commitMsg, rendered); err != nil {
-		slog.Error("create guest resource", "workspace", workspaceName, "name", resourceName, "err", err)
-		http.Error(w, "failed to create resource", http.StatusInternalServerError)
-		return
-	}
-
-	slog.Info("created guest resource", "workspace", workspaceName, "kind", req.Kind, "name", resourceName)
-
-	// When a non-XApi resource is added, re-render the XApi (if present) so
-	// it picks up fresh nosqlRef/objectStorageRef wiring.
-	// Pass the just-written filename so updateGuestApiRefs includes it even if
-	// GitHub's listDir hasn't indexed the new commit yet (eventual consistency).
-	if req.Kind != "XApi" {
-		a.updateGuestApiRefs(ctx, workspaceName, wsSlot, resourceName+".yaml")
-	}
-
+	slog.Info("created guest resources", "workspace", workspaceName, "kinds", plan, "names", createdNames)
 	a.triggerArgoSync(workspaceName)
 	w.WriteHeader(http.StatusCreated)
 }
@@ -376,67 +390,6 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["subjects"] = []string{name + ".*"}
 	}
 	return p
-}
-
-// updateGuestApiRefs re-renders the XApi in a guest workspace whenever a
-// sibling resource is added, preserving the existing withCache/withSql state.
-// It fetches a fresh file list from GitHub to handle concurrent creates.
-// guaranteeFiles lists filenames that must be included even if GitHub's listDir
-// hasn't indexed the freshly committed file yet (eventual consistency).
-func (a *app) updateGuestApiRefs(ctx context.Context, workspace, slot string, guaranteeFiles ...string) {
-	entries, err := a.gh.listDir(ctx, workspace)
-	if err != nil {
-		slog.Warn("update guest api refs: list dir", "workspace", workspace, "err", err)
-		return
-	}
-	seen := make(map[string]bool, len(entries))
-	fileNames := make([]string, 0, len(entries)+len(guaranteeFiles))
-	var apiName string
-	for _, e := range entries {
-		if e.Type != "file" {
-			continue
-		}
-		seen[e.Name] = true
-		fileNames = append(fileNames, e.Name)
-		// Match "api.yaml", "{slug}-api.yaml" (new), "api-{hex}.yaml", "xapi-{slug}.yaml" (old).
-		if strings.HasSuffix(e.Name, ".yaml") && (e.Name == "api.yaml" || strings.HasSuffix(e.Name, "-api.yaml") || strings.HasPrefix(e.Name, "xapi-")) {
-			apiName = strings.TrimSuffix(e.Name, ".yaml")
-		}
-	}
-	for _, f := range guaranteeFiles {
-		if !seen[f] {
-			fileNames = append(fileNames, f)
-		}
-	}
-	if apiName == "" {
-		return // no XApi in this workspace yet
-	}
-
-	// Preserve the existing withCache choice from the live file.
-	var withCache bool
-	if existing, err := a.gh.fileContent(ctx, workspace+"/"+apiName+".yaml"); err == nil {
-		var m xrManifest
-		if yaml.Unmarshal(existing, &m) == nil {
-			withCache = m.Spec.Parameters["cache"] != nil
-		}
-	}
-
-	guestImage := envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
-	wr := writeRequest{
-		Workspace: workspace,
-		Kind:      "XApi",
-		Name:      apiName,
-		Params:    buildGuestParams(workspace, slot, apiName, "XApi", guestImage, fileNames, withCache, false),
-	}
-	rendered, err := RenderResource(wr)
-	if err != nil {
-		slog.Warn("update guest api refs: render", "workspace", workspace, "err", err)
-		return
-	}
-	path := fmt.Sprintf("%s/%s.yaml", workspace, apiName)
-	if err := a.gh.upsertFile(ctx, path, "feat: update guest api refs in "+workspace, rendered); err != nil {
-		slog.Warn("update guest api refs: upsert", "workspace", workspace, "err", err)
-	}
 }
 
 // handlePatchGuestResource re-renders a guest XApi with updated connection params.
@@ -766,7 +719,6 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 	}
 	return base, nil
 }
-
 
 // copyDemoTLSSecrets copies the pre-provisioned demo slot TLS secrets from the
 // demo-certs namespace into the guest workspace namespace so the Ingress can

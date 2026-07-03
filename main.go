@@ -77,7 +77,7 @@ func main() {
 	// Guest endpoints — no auth required; registered before the catch-all.
 	mux.HandleFunc("GET /api/guest/workspaces", a.handleListGuestWorkspaces)
 	mux.HandleFunc("POST /api/guest/workspaces", a.handleCreateGuestWorkspace)
-	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources", a.handleCreateGuestResource)
+	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources/batch", a.handleCreateGuestResourceBatch)
 	mux.HandleFunc("PATCH /api/guest/workspaces/{name}/resources/{resource}", a.handlePatchGuestResource)
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/phases", a.handleRecordGuestPhase)
 	mux.Handle("/", auth.requireAuth(api))
