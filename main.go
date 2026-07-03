@@ -19,6 +19,7 @@ type app struct {
 	gh        *githubClient
 	bcast     *broadcaster
 	dynClient dynamic.Interface // nil if K8s unavailable
+	auth      *authMiddleware
 }
 
 func main() {
@@ -53,10 +54,12 @@ func main() {
 		slog.Error("auth init failed", "err", err)
 		os.Exit(1)
 	}
+	a.auth = auth
 
 	go startWatcher(ctx, b, dynClient)
 	go startPodWatcher(ctx, b, dynClient)
 	go a.startGuestCleanup(ctx)
+	go auth.tickets.startSweeper(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/workspaces", a.handleListWorkspaces)
@@ -68,6 +71,7 @@ func main() {
 	api.HandleFunc("GET /api/workspaces/{name}/resources/{resource}/values", a.handleGetResourceValues)
 	api.HandleFunc("GET /api/schema/{kind}", a.handleGetSchema)
 	api.HandleFunc("GET /api/status/watch", a.handleStatusWatch)
+	api.HandleFunc("POST /api/status/watch/ticket", a.handleIssueSSETicket)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +214,22 @@ func (a *app) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 	slog.Info("committed", "path", resourcePath)
 	a.triggerArgoSync(tenant)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// handleIssueSSETicket exchanges the caller's real Bearer token (already
+// validated by requireAuth) for a short-lived, single-use ticket that the
+// frontend can safely put in the /api/status/watch URL — EventSource has no
+// way to send an Authorization header, so this avoids ever logging or
+// exposing the real token in a URL.
+func (a *app) handleIssueSSETicket(w http.ResponseWriter, r *http.Request) {
+	roles, _ := r.Context().Value(rolesKey).([]string)
+	ticket, err := a.auth.tickets.mint(roles)
+	if err != nil {
+		slog.Error("mint SSE ticket", "err", err)
+		http.Error(w, "failed to issue ticket", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ticket": ticket})
 }
 
 // handleStatusWatch streams K8s XR status events to the client as SSE.

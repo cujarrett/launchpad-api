@@ -23,6 +23,7 @@ type authMiddleware struct {
 	tenantID string
 	clientID string
 	disabled bool
+	tickets  *ticketStore
 }
 
 func newAuthMiddleware(ctx context.Context) (*authMiddleware, error) {
@@ -31,7 +32,7 @@ func newAuthMiddleware(ctx context.Context) (*authMiddleware, error) {
 			return nil, fmt.Errorf("auth: ENTRA_AUTH_DISABLED=true is not permitted on port 443")
 		}
 		slog.Error("⚠️  AUTH DISABLED — all requests granted Contributor — development only")
-		return &authMiddleware{disabled: true}, nil
+		return &authMiddleware{disabled: true, tickets: newTicketStore()}, nil
 	}
 
 	tenantID := mustEnv("ENTRA_TENANT_ID")
@@ -52,6 +53,7 @@ func newAuthMiddleware(ctx context.Context) (*authMiddleware, error) {
 		jwks:     k,
 		tenantID: tenantID,
 		clientID: clientID,
+		tickets:  newTicketStore(),
 	}, nil
 }
 
@@ -72,17 +74,22 @@ func (a *authMiddleware) requireAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		// SSE: token is optional (passed as ?token= by logged-in clients).
-		// Anonymous viewers get the status stream with no roles.
+		// SSE: EventSource can't send an Authorization header, so logged-in
+		// clients exchange their real token for a short-lived, single-use
+		// ticket first (POST /api/status/watch/ticket, header-authenticated
+		// like any other write) and pass that instead of the real token.
+		// A leaked ticket in a log or URL is worthless beyond one connection
+		// attempt within ticketTTL. Anonymous viewers (no ticket) still get
+		// the status stream with no roles.
 		if r.Method == http.MethodGet && r.URL.Path == "/api/status/watch" {
-			token := r.URL.Query().Get("token")
-			if token == "" {
+			ticket := r.URL.Query().Get("ticket")
+			if ticket == "" {
 				next.ServeHTTP(w, r)
 				return
 			}
-			roles, err := a.validateToken(token)
-			if err != nil {
-				slog.Debug("auth: SSE token rejected", "err", err)
+			roles, ok := a.tickets.redeem(ticket)
+			if !ok {
+				slog.Debug("auth: SSE ticket rejected")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
