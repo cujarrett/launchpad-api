@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +21,18 @@ type app struct {
 	bcast     *broadcaster
 	dynClient dynamic.Interface // nil if K8s unavailable
 	auth      *authMiddleware
+
+	wsCacheMu sync.Mutex
+	wsCache   []workspaceJSON
+	wsCacheAt time.Time
+}
+
+// invalidateWorkspacesCache forces the next /api/workspaces request to fetch
+// fresh data instead of serving the cached listing.
+func (a *app) invalidateWorkspacesCache() {
+	a.wsCacheMu.Lock()
+	a.wsCacheAt = time.Time{}
+	a.wsCacheMu.Unlock()
 }
 
 func main() {

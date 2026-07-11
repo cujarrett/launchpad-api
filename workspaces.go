@@ -52,7 +52,21 @@ type xrManifest struct {
 	} `yaml:"spec"`
 }
 
+// workspacesCacheTTL bounds how stale the /api/workspaces listing can be. The
+// UI polls this endpoint frequently; without a cache, each poll re-fans-out a
+// GitHub API call per guest workspace, so latency grows with sandbox count.
+const workspacesCacheTTL = 3 * time.Second
+
 func (a *app) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
+	a.wsCacheMu.Lock()
+	if !a.wsCacheAt.IsZero() && time.Since(a.wsCacheAt) < workspacesCacheTTL {
+		cached := a.wsCache
+		a.wsCacheMu.Unlock()
+		writeJSON(w, cached)
+		return
+	}
+	a.wsCacheMu.Unlock()
+
 	entries, err := a.gh.listDir(r.Context(), "")
 	if err != nil {
 		slog.Error("list workspaces", "err", err)
@@ -90,6 +104,11 @@ func (a *app) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	wg.Wait()
+
+	a.wsCacheMu.Lock()
+	a.wsCache = workspaces
+	a.wsCacheAt = time.Now()
+	a.wsCacheMu.Unlock()
 
 	writeJSON(w, workspaces)
 }

@@ -173,7 +173,11 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	a.copyDemoTLSSecrets(ctx, slot, fullName)
+	// The namespace itself doesn't exist yet — it was just committed to git and
+	// still needs an ArgoCD sync before the cluster creates it. Retry in the
+	// background instead of racing it on the request path.
+	go a.copyDemoTLSSecretsWhenReady(context.Background(), slot, fullName)
+	a.invalidateWorkspacesCache()
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
 	a.triggerAppSetRefresh()
 	w.WriteHeader(http.StatusCreated)
@@ -666,6 +670,8 @@ func (a *app) cleanupExpiredGuests(ctx context.Context) {
 // deleteGuestWorkspaceFiles deletes every file in the guest workspace directory.
 // ArgoCD and Crossplane cascade from there.
 func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
+	defer a.invalidateWorkspacesCache()
+
 	entries, err := a.gh.listDir(ctx, name)
 	if err != nil {
 		slog.Error("guest cleanup: list dir", "workspace", name, "err", err)
@@ -718,6 +724,35 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 		}
 	}
 	return base, nil
+}
+
+// copyDemoTLSSecretsWhenReady waits for ArgoCD to sync the just-committed
+// namespace into the cluster before copying the TLS secrets into it. Bounded
+// to 30s — well past the typical ArgoCD sync latency observed in practice.
+func (a *app) copyDemoTLSSecretsWhenReady(ctx context.Context, slot, targetNamespace string) {
+	if a.dynClient == nil {
+		slog.Warn("copyDemoTLSSecrets: no k8s client, skipping")
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	nsGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		if _, err := a.dynClient.Resource(nsGVR).Get(ctx, targetNamespace, metav1.GetOptions{}); err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			slog.Warn("copyDemoTLSSecrets: namespace never appeared", "namespace", targetNamespace)
+			return
+		case <-ticker.C:
+		}
+	}
+
+	a.copyDemoTLSSecrets(ctx, slot, targetNamespace)
 }
 
 // copyDemoTLSSecrets copies the pre-provisioned demo slot TLS secrets from the
