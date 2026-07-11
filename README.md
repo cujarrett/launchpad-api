@@ -97,7 +97,9 @@ ARM64 Docker image built by CI, pushed to GHCR, deployed as an `XApi` XR via Arg
 ### Rotating `LAUNCHPAD_API`
 
 ```bash
+print -n "Paste new token: "
 read -rs NEW_TOKEN
+echo
 kubectl patch secret launchpad-secrets -n launchpad \
   --type='json' \
   -p='[{"op":"replace","path":"/data/LAUNCHPAD_API","value":"'"$(echo -n "$NEW_TOKEN" | base64)"'"}]'
