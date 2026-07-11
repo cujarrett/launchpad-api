@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -726,9 +727,13 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 	return base, nil
 }
 
-// copyDemoTLSSecretsWhenReady waits for ArgoCD to sync the just-committed
-// namespace into the cluster before copying the TLS secrets into it. Bounded
-// to 30s — well past the typical ArgoCD sync latency observed in practice.
+// copyDemoTLSSecretsWhenReady retries copyDemoTLSSecrets until it fully
+// succeeds or the bound elapses. The guest namespace doesn't exist yet when
+// this is first called — it was just committed to git and still needs an
+// ArgoCD sync — so early attempts are expected to fail with "not found"
+// until the namespace shows up. There's no RBAC grant for launchpad-api to
+// get namespaces directly, so this retries the real operation instead of
+// polling namespace existence first.
 func (a *app) copyDemoTLSSecretsWhenReady(ctx context.Context, slot, targetNamespace string) {
 	if a.dynClient == nil {
 		slog.Warn("copyDemoTLSSecrets: no k8s client, skipping")
@@ -737,38 +742,38 @@ func (a *app) copyDemoTLSSecretsWhenReady(ctx context.Context, slot, targetNames
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	nsGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
-		if _, err := a.dynClient.Resource(nsGVR).Get(ctx, targetNamespace, metav1.GetOptions{}); err == nil {
-			break
+		if a.copyDemoTLSSecrets(ctx, slot, targetNamespace) {
+			return
 		}
 		select {
 		case <-ctx.Done():
-			slog.Warn("copyDemoTLSSecrets: namespace never appeared", "namespace", targetNamespace)
+			slog.Warn("copyDemoTLSSecrets: gave up", "namespace", targetNamespace)
 			return
 		case <-ticker.C:
 		}
 	}
-
-	a.copyDemoTLSSecrets(ctx, slot, targetNamespace)
 }
 
 // copyDemoTLSSecrets copies the pre-provisioned demo slot TLS secrets from the
 // demo-certs namespace into the guest workspace namespace so the Ingress can
-// reference them directly without triggering cert-manager issuance.
-func (a *app) copyDemoTLSSecrets(ctx context.Context, slot, targetNamespace string) {
+// reference them directly without triggering cert-manager issuance. Returns
+// true only if both secrets were copied successfully.
+func (a *app) copyDemoTLSSecrets(ctx context.Context, slot, targetNamespace string) bool {
 	if a.dynClient == nil {
 		slog.Warn("copyDemoTLSSecrets: no k8s client, skipping")
-		return
+		return false
 	}
 	secretGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}
 	secretNames := []string{slot + "-api-tls", slot + "-tls"}
+	ok := true
 	for _, name := range secretNames {
 		src, err := a.dynClient.Resource(secretGVR).Namespace("demo-certs").Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			slog.Warn("copyDemoTLSSecrets: get source secret", "name", name, "err", err)
+			ok = false
 			continue
 		}
 		dst := src.DeepCopy()
@@ -778,12 +783,14 @@ func (a *app) copyDemoTLSSecrets(ctx context.Context, slot, targetNamespace stri
 		dst.SetCreationTimestamp(metav1.Time{})
 		dst.SetOwnerReferences(nil)
 		_, err = a.dynClient.Resource(secretGVR).Namespace(targetNamespace).Create(ctx, dst, metav1.CreateOptions{})
-		if err != nil {
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			slog.Warn("copyDemoTLSSecrets: create secret in guest namespace", "name", name, "namespace", targetNamespace, "err", err)
+			ok = false
 		} else {
 			slog.Info("copyDemoTLSSecrets: copied", "name", name, "namespace", targetNamespace)
 		}
 	}
+	return ok
 }
 
 // pickGuestSlot returns a random available slot from guestSlots.
