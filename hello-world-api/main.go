@@ -519,7 +519,13 @@ func (a *app) pullSub(js nats.JetStreamContext, stream, consumer string) (*nats.
 	if a.natsSub != nil {
 		return a.natsSub, nil
 	}
-	sub, err := js.PullSubscribe("", consumer, nats.Bind(stream, consumer))
+	ci, err := js.ConsumerInfo(stream, consumer)
+	if err != nil {
+		return nil, err
+	}
+	// nats.go rejects an empty subject unless it exactly matches the durable's
+	// filter, so bind with the consumer's own filter subject.
+	sub, err := js.PullSubscribe(ci.Config.FilterSubject, consumer, nats.Bind(stream, consumer))
 	if err != nil {
 		return nil, err
 	}
