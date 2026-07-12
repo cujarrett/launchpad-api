@@ -34,11 +34,20 @@ type ghFile struct {
 }
 
 func newGithubClient(token, owner, repo string) *githubClient {
+	// Go's default Transport only keeps 2 idle connections per host. Guest
+	// sandbox creation fans out several concurrent calls to api.github.com
+	// (reads + writes), and GET /api/workspaces cache-miss requests share this
+	// same client — with only 2 idle conns, that concurrency thrashes the pool
+	// and forces a fresh TCP+TLS handshake per request, which was dragging
+	// down unrelated reads under load. Raise the per-host idle pool so
+	// concurrent requests can reuse connections instead of re-dialing.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = 20
 	return &githubClient{
 		token:  token,
 		owner:  owner,
 		repo:   repo,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{Timeout: 10 * time.Second, Transport: transport},
 	}
 }
 
