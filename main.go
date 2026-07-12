@@ -25,6 +25,9 @@ type app struct {
 	wsCacheMu sync.Mutex
 	wsCache   []workspaceJSON
 	wsCacheAt time.Time
+
+	resourceCacheMu sync.Mutex
+	resourceCache   map[string]resourceCacheEntry
 }
 
 // invalidateWorkspacesCache forces the next /api/workspaces request to fetch
@@ -57,7 +60,7 @@ func main() {
 		dynClient = c
 	}
 
-	a := &app{gh: gh, bcast: b, dynClient: dynClient}
+	a := &app{gh: gh, bcast: b, dynClient: dynClient, resourceCache: map[string]resourceCacheEntry{}}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

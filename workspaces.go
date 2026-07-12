@@ -127,12 +127,30 @@ func excludedWorkspaces() map[string]bool {
 	return set
 }
 
+// resourcesCacheTTL bounds how stale the /api/workspaces/{name}/resources
+// listing can be. Fetching each resource file is a separate GitHub API call,
+// so without a cache repeated page loads/polls re-pay that latency in full.
+const resourcesCacheTTL = 3 * time.Second
+
+type resourceCacheEntry struct {
+	resources []resourceJSON
+	at        time.Time
+}
+
 func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !validWorkspaceName.MatchString(name) {
 		http.Error(w, "invalid workspace name", http.StatusBadRequest)
 		return
 	}
+
+	a.resourceCacheMu.Lock()
+	if entry, ok := a.resourceCache[name]; ok && time.Since(entry.at) < resourcesCacheTTL {
+		a.resourceCacheMu.Unlock()
+		writeJSON(w, entry.resources)
+		return
+	}
+	a.resourceCacheMu.Unlock()
 
 	entries, err := a.gh.listDir(r.Context(), name)
 	if err != nil {
@@ -141,39 +159,60 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resources := make([]resourceJSON, 0)
+	var files []ghEntry
 	for _, e := range entries {
-		if e.Type != "file" || !strings.HasSuffix(e.Name, ".yaml") {
+		if e.Type != "file" || !strings.HasSuffix(e.Name, ".yaml") || e.Name == "namespace.yaml" {
 			continue
 		}
-		if e.Name == "namespace.yaml" {
-			continue
-		}
-
-		content, err := a.gh.fileContent(r.Context(), e.Path)
-		if err != nil {
-			slog.Warn("fetch file", "path", e.Path, "err", err)
-			continue
-		}
-
-		var m xrManifest
-		if err := yaml.Unmarshal(content, &m); err != nil {
-			slog.Warn("parse yaml", "path", e.Path, "err", err)
-			continue
-		}
-
-		if !strings.HasPrefix(m.APIVersion, "platform.local.lab") {
-			continue
-		}
-
-		ns, _ := m.Spec.Parameters["namespace"].(string)
-		resources = append(resources, resourceJSON{
-			Name:      m.Metadata.Name,
-			Kind:      m.Kind,
-			Namespace: ns,
-			Spec:      m.Spec.Parameters,
-		})
+		files = append(files, e)
 	}
+
+	// Fetch file contents in parallel — each is a separate GitHub API call,
+	// and doing them serially made this endpoint take seconds per workspace.
+	parsed := make([]*resourceJSON, len(files))
+	var wg sync.WaitGroup
+	for i, e := range files {
+		wg.Add(1)
+		go func(idx int, entry ghEntry) {
+			defer wg.Done()
+			content, err := a.gh.fileContent(r.Context(), entry.Path)
+			if err != nil {
+				slog.Warn("fetch file", "path", entry.Path, "err", err)
+				return
+			}
+
+			var m xrManifest
+			if err := yaml.Unmarshal(content, &m); err != nil {
+				slog.Warn("parse yaml", "path", entry.Path, "err", err)
+				return
+			}
+
+			if !strings.HasPrefix(m.APIVersion, "platform.local.lab") {
+				return
+			}
+
+			ns, _ := m.Spec.Parameters["namespace"].(string)
+			parsed[idx] = &resourceJSON{
+				Name:      m.Metadata.Name,
+				Kind:      m.Kind,
+				Namespace: ns,
+				Spec:      m.Spec.Parameters,
+			}
+		}(i, e)
+	}
+	wg.Wait()
+
+	resources := make([]resourceJSON, 0, len(parsed))
+	for _, r := range parsed {
+		if r != nil {
+			resources = append(resources, *r)
+		}
+	}
+
+	a.resourceCacheMu.Lock()
+	a.resourceCache[name] = resourceCacheEntry{resources: resources, at: time.Now()}
+	a.resourceCacheMu.Unlock()
+
 	writeJSON(w, resources)
 }
 
