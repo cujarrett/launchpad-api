@@ -35,7 +35,22 @@ var (
 // returns the slot string. This avoids the root listDir call in loadGuestWorkspaces
 // which can return a stale CDN-cached response for a brand-new directory.
 func (a *app) validateGuestWorkspace(ctx context.Context, workspaceName string) (string, error) {
-	metaContent, err := a.gh.fileContent(ctx, workspaceName+"/guest.yaml")
+	// Retry a few times before concluding the workspace doesn't exist — GitHub's
+	// Contents API can briefly 404 a file that was written moments ago (the same
+	// read-after-write consistency hiccup handled elsewhere), and this is called
+	// right after workspace creation when that window is most likely to be hit.
+	// A genuinely missing/deleted workspace still 404s consistently across retries.
+	var metaContent []byte
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(400 * time.Millisecond)
+		}
+		metaContent, err = a.gh.fileContent(ctx, workspaceName+"/guest.yaml")
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return "", errWorkspaceNotFound
 	}
