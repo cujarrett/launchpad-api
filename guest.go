@@ -623,39 +623,58 @@ func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, er
 		return nil, err
 	}
 
-	var result []guestWorkspaceJSON
+	var dirs []ghEntry
 	for _, e := range entries {
-		if e.Type != "dir" || !strings.HasPrefix(e.Name, guestPrefix) {
-			continue
+		if e.Type == "dir" && strings.HasPrefix(e.Name, guestPrefix) {
+			dirs = append(dirs, e)
 		}
+	}
 
-		metaContent, err := a.gh.fileContent(ctx, e.Name+"/guest.yaml")
-		if err != nil {
-			slog.Warn("load guest meta", "workspace", e.Name, "err", err)
-			continue
-		}
+	// Fetching each workspace's guest.yaml is an independent GitHub API call —
+	// fan them out concurrently instead of one at a time.
+	entriesOut := make([]*guestWorkspaceJSON, len(dirs))
+	var wg sync.WaitGroup
+	for i, e := range dirs {
+		wg.Add(1)
+		go func(idx int, name string) {
+			defer wg.Done()
 
-		var meta struct {
-			CreatedAt string `yaml:"createdAt"`
-			Slot      string `yaml:"slot"`
-		}
-		if err := yaml.Unmarshal(metaContent, &meta); err != nil {
-			slog.Warn("parse guest meta", "workspace", e.Name, "err", err)
-			continue
-		}
+			metaContent, err := a.gh.fileContent(ctx, name+"/guest.yaml")
+			if err != nil {
+				slog.Warn("load guest meta", "workspace", name, "err", err)
+				return
+			}
 
-		t, err := time.Parse(time.RFC3339, meta.CreatedAt)
-		if err != nil {
-			slog.Warn("invalid guest createdAt", "workspace", e.Name, "err", err)
-			continue
-		}
+			var meta struct {
+				CreatedAt string `yaml:"createdAt"`
+				Slot      string `yaml:"slot"`
+			}
+			if err := yaml.Unmarshal(metaContent, &meta); err != nil {
+				slog.Warn("parse guest meta", "workspace", name, "err", err)
+				return
+			}
 
-		result = append(result, guestWorkspaceJSON{
-			Name:      e.Name,
-			Slot:      meta.Slot,
-			CreatedAt: meta.CreatedAt,
-			ExpiresAt: t.Add(guestTTL).Format(time.RFC3339),
-		})
+			t, err := time.Parse(time.RFC3339, meta.CreatedAt)
+			if err != nil {
+				slog.Warn("invalid guest createdAt", "workspace", name, "err", err)
+				return
+			}
+
+			entriesOut[idx] = &guestWorkspaceJSON{
+				Name:      name,
+				Slot:      meta.Slot,
+				CreatedAt: meta.CreatedAt,
+				ExpiresAt: t.Add(guestTTL).Format(time.RFC3339),
+			}
+		}(i, e.Name)
+	}
+	wg.Wait()
+
+	var result []guestWorkspaceJSON
+	for _, e := range entriesOut {
+		if e != nil {
+			result = append(result, *e)
+		}
 	}
 
 	// Oldest first — used for the cap-exceeded message.
