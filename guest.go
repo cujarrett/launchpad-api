@@ -643,6 +643,28 @@ func (a *app) startGuestCleanup(ctx context.Context) {
 	}
 }
 
+// staleGuestSweepThreshold is how many consecutive cleanup ticks (~1/min) a
+// workspace can have a missing/unreadable guest.yaml before it's swept as a
+// leftover from a previously-interrupted delete, rather than skipped forever.
+// A workspace genuinely mid-creation resolves within seconds, not minutes.
+const staleGuestSweepThreshold = 3
+
+func (a *app) recordStaleGuestMiss(name string) int {
+	a.staleGuestMu.Lock()
+	defer a.staleGuestMu.Unlock()
+	if a.staleGuestMisses == nil {
+		a.staleGuestMisses = map[string]int{}
+	}
+	a.staleGuestMisses[name]++
+	return a.staleGuestMisses[name]
+}
+
+func (a *app) clearStaleGuestMisses(name string) {
+	a.staleGuestMu.Lock()
+	defer a.staleGuestMu.Unlock()
+	delete(a.staleGuestMisses, name)
+}
+
 func (a *app) cleanupExpiredGuests(ctx context.Context) {
 	entries, err := a.gh.listDir(ctx, "")
 	if err != nil {
@@ -655,12 +677,19 @@ func (a *app) cleanupExpiredGuests(ctx context.Context) {
 		}
 		expiry := a.fetchGuestExpiry(ctx, e.Name)
 		if expiry == nil {
-			// guest.yaml missing or unreadable. Skip rather than delete: a transient
-			// GitHub API error returns nil here too, and false-deleting a live workspace
-			// is worse than leaving a zombie behind.
+			// guest.yaml missing or unreadable. Usually a workspace still mid-creation,
+			// but if this persists across several ticks it's a leftover directory from
+			// a delete that failed partway through — sweep whatever files remain.
+			if misses := a.recordStaleGuestMiss(e.Name); misses >= staleGuestSweepThreshold {
+				slog.Warn("guest cleanup: guest.yaml missing after repeated checks, sweeping leftover files", "workspace", e.Name, "misses", misses)
+				a.deleteGuestWorkspaceFiles(ctx, e.Name)
+				a.clearStaleGuestMisses(e.Name)
+				continue
+			}
 			slog.Warn("guest cleanup: could not read expiry, skipping", "workspace", e.Name)
 			continue
 		}
+		a.clearStaleGuestMisses(e.Name)
 		if time.Now().After(*expiry) {
 			slog.Info("guest cleanup: deleting expired workspace", "workspace", e.Name)
 			a.deleteGuestWorkspaceFiles(ctx, e.Name)
@@ -669,7 +698,9 @@ func (a *app) cleanupExpiredGuests(ctx context.Context) {
 }
 
 // deleteGuestWorkspaceFiles deletes every file in the guest workspace directory.
-// ArgoCD and Crossplane cascade from there.
+// ArgoCD and Crossplane cascade from there. Each delete is retried a few times —
+// GitHub's contents API can briefly 404 the SHA lookup for a file that was just
+// listed, a read-after-write consistency hiccup rather than a real absence.
 func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 	defer a.invalidateWorkspacesCache()
 
@@ -678,13 +709,28 @@ func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 		slog.Error("guest cleanup: list dir", "workspace", name, "err", err)
 		return
 	}
+	ok := true
 	for _, e := range entries {
 		if e.Type != "file" {
 			continue
 		}
-		if err := a.gh.deleteFile(ctx, e.Path, "chore: cleanup expired guest workspace "+name); err != nil {
-			slog.Error("guest cleanup: delete file", "path", e.Path, "err", err)
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			if attempt > 0 {
+				time.Sleep(time.Second)
+			}
+			if err = a.gh.deleteFile(ctx, e.Path, "chore: cleanup expired guest workspace "+name); err == nil {
+				break
+			}
 		}
+		if err != nil {
+			slog.Error("guest cleanup: delete file", "path", e.Path, "err", err)
+			ok = false
+		}
+	}
+	if !ok {
+		slog.Error("guest cleanup: workspace not fully cleaned, will retry next tick", "workspace", name)
+		return
 	}
 	slog.Info("guest cleanup: workspace cleaned", "workspace", name)
 }

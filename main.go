@@ -28,6 +28,9 @@ type app struct {
 
 	resourceCacheMu sync.Mutex
 	resourceCache   map[string]resourceCacheEntry
+
+	staleGuestMu     sync.Mutex
+	staleGuestMisses map[string]int
 }
 
 // invalidateWorkspacesCache forces the next /api/workspaces request to fetch
