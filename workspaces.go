@@ -53,9 +53,13 @@ type xrManifest struct {
 }
 
 // workspacesCacheTTL bounds how stale the /api/workspaces listing can be. The
-// UI polls this endpoint frequently; without a cache, each poll re-fans-out a
-// GitHub API call per guest workspace, so latency grows with sandbox count.
-const workspacesCacheTTL = 3 * time.Second
+// UI polls this endpoint frequently, and hits it again on every navigation
+// back to the home page; without a cache, each of those re-fans-out a GitHub
+// API call per guest workspace, so latency grows with sandbox count and every
+// occasional slow GitHub response is fully exposed to whoever's clicking
+// around at that moment. Held generously long since create/delete invalidate
+// it immediately, so staleness is bounded by actual mutations, not this TTL.
+const workspacesCacheTTL = 20 * time.Second
 
 func (a *app) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	a.wsCacheMu.Lock()
@@ -128,9 +132,20 @@ func excludedWorkspaces() map[string]bool {
 }
 
 // resourcesCacheTTL bounds how stale the /api/workspaces/{name}/resources
-// listing can be. Fetching each resource file is a separate GitHub API call,
-// so without a cache repeated page loads/polls re-pay that latency in full.
+// listing can be for guest workspaces. Fetching each resource file is a
+// separate GitHub API call, so without a cache repeated page loads/polls
+// re-pay that latency in full. Kept short because guests actively create and
+// delete resources through the UI and expect that to show up promptly — this
+// cache has no active invalidation hook (unlike wsCache/guestListCache), so
+// TTL is the only thing bounding staleness here.
 const resourcesCacheTTL = 3 * time.Second
+
+// nonGuestResourcesCacheTTL applies to hand-maintained workspaces (everything
+// not prefixed guest-). Those are committed directly to homelab-workspaces
+// outside launchpad-api entirely, so there's no create/delete event to react
+// to either way — a much longer TTL just means fewer repeat GitHub calls for
+// data that in practice changes on the order of days, not seconds.
+const nonGuestResourcesCacheTTL = 5 * time.Minute
 
 type resourceCacheEntry struct {
 	resources []resourceJSON
@@ -144,8 +159,13 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ttl := nonGuestResourcesCacheTTL
+	if strings.HasPrefix(name, guestPrefix) {
+		ttl = resourcesCacheTTL
+	}
+
 	a.resourceCacheMu.Lock()
-	if entry, ok := a.resourceCache[name]; ok && time.Since(entry.at) < resourcesCacheTTL {
+	if entry, ok := a.resourceCache[name]; ok && time.Since(entry.at) < ttl {
 		a.resourceCacheMu.Unlock()
 		writeJSON(w, entry.resources)
 		return

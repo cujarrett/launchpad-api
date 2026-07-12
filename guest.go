@@ -615,15 +615,16 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 	}
 }
 
-// loadGuestWorkspaces lists all live guest-* workspaces with their expiry times,
-// sorted oldest-first (for the "hogging the sandbox" cap message).
 // guestListCacheTTL bounds how stale the guest workspace list (with slots)
 // can be. loadGuestWorkspaces is on the critical path for every workspace
 // creation's capacity/slot check, and is also polled by /metrics and the
 // cleanup loop — caching it keeps a burst of creations from each paying a
-// fresh multi-second GitHub fetch.
-const guestListCacheTTL = 3 * time.Second
+// fresh multi-second GitHub fetch. Held generously long since create/delete
+// invalidate it immediately, so staleness is bounded by actual mutations.
+const guestListCacheTTL = 20 * time.Second
 
+// loadGuestWorkspaces lists all live guest-* workspaces with their expiry times,
+// sorted oldest-first (for the "hogging the sandbox" cap message).
 func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, error) {
 	a.guestListCacheMu.Lock()
 	if !a.guestListCacheAt.IsZero() && time.Since(a.guestListCacheAt) < guestListCacheTTL {
