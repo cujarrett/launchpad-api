@@ -26,6 +26,10 @@ type app struct {
 	wsCache   []workspaceJSON
 	wsCacheAt time.Time
 
+	guestListCacheMu sync.Mutex
+	guestListCache   []guestWorkspaceJSON
+	guestListCacheAt time.Time
+
 	resourceCacheMu sync.Mutex
 	resourceCache   map[string]resourceCacheEntry
 
@@ -60,12 +64,17 @@ func (a *app) forgetGuestMeta(name string) {
 	delete(a.guestMetaLk, name)
 }
 
-// invalidateWorkspacesCache forces the next /api/workspaces request to fetch
-// fresh data instead of serving the cached listing.
+// invalidateWorkspacesCache forces the next /api/workspaces request, and the
+// next loadGuestWorkspaces call, to fetch fresh data instead of serving a
+// cached listing.
 func (a *app) invalidateWorkspacesCache() {
 	a.wsCacheMu.Lock()
 	a.wsCacheAt = time.Time{}
 	a.wsCacheMu.Unlock()
+
+	a.guestListCacheMu.Lock()
+	a.guestListCacheAt = time.Time{}
+	a.guestListCacheMu.Unlock()
 }
 
 func main() {
