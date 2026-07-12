@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,7 +17,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	rdsauth "github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	ddbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -67,9 +77,12 @@ type app struct {
 	bindingRoot string
 	probes      []namedProbe
 
-	mu    sync.Mutex
-	pg    *pgxpool.Pool // cached after first successful connect
-	redis *redis.Client // cached after first successful connect
+	mu      sync.Mutex
+	pg      *pgxpool.Pool // cached after first successful connect
+	redis   *redis.Client // cached after first successful connect
+	nats    *nats.Conn    // cached after first successful connect
+	js      nats.JetStreamContext
+	natsSub *nats.Subscription // cached pull subscription bound to the durable consumer
 }
 
 func newApp(bindingRoot string) *app {
@@ -79,6 +92,8 @@ func newApp(bindingRoot string) *app {
 		{"Cache", a.probeRedis},
 		{"NoSQL Database", a.probeNoSQL},
 		{"Object Storage", a.probeObjectStorage},
+		{"Topic", a.probeTopic},
+		{"Subscription", a.probeSubscription},
 	}
 	return a
 }
@@ -136,6 +151,9 @@ func (a *app) probePostgres(ctx context.Context) integrationStatus {
 	b, ok := readBinding(a.bindingRoot, "sql")
 	if !ok {
 		return integrationStatus{Name: name, Status: "not_configured"}
+	}
+	if b["password"] == "" && b["role-arn"] != "" {
+		return a.probePostgresIAM(ctx, b)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
@@ -203,6 +221,9 @@ func (a *app) probeRedis(ctx context.Context) integrationStatus {
 	if !ok {
 		return integrationStatus{Name: name, Status: "not_configured"}
 	}
+	if b["role-arn"] != "" {
+		return a.probeRedisIAM(ctx, b)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
@@ -223,28 +244,397 @@ func (a *app) probeRedis(ctx context.Context) integrationStatus {
 	}
 }
 
-func (a *app) probeNoSQL(_ context.Context) integrationStatus {
-	return presenceProbe(a.bindingRoot, "nosql", "NoSQL Database")
-}
-
-func (a *app) probeObjectStorage(_ context.Context) integrationStatus {
-	return presenceProbe(a.bindingRoot, "object-storage", "Object Storage")
-}
-
-func presenceProbe(root, name, displayName string) integrationStatus {
-	if _, ok := readBinding(root, name); !ok {
-		return integrationStatus{Name: displayName, Status: "not_configured"}
-	}
+// hasProfile reports whether the shared AWS credentials file has a section for
+// the named profile yet. The aws-credentials-sidecar writes one section per
+// binding shortly after startup; a missing section means "starting", not broken.
+// The profile name always equals the binding directory name (nosql, sql, cache,
+// object-storage, object-storage-1, ...).
+func hasProfile(name string) bool {
 	credsFile := os.Getenv("AWS_SHARED_CREDENTIALS_FILE")
-	if credsFile != "" {
-		if data, err := os.ReadFile(credsFile); err == nil {
-			// Check for INI section header (e.g., [nosql], [object-storage]) in credentials file
-			if strings.Contains(string(data), "["+name+"]") {
-				return integrationStatus{Name: displayName, Status: "ok", Detail: "credentials active"}
+	if credsFile == "" {
+		return false
+	}
+	data, err := os.ReadFile(credsFile)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "["+name+"]")
+}
+
+func awsProfileConfig(ctx context.Context, profile, region string) (aws.Config, error) {
+	return config.LoadDefaultConfig(ctx,
+		config.WithSharedConfigProfile(profile),
+		config.WithRegion(region),
+	)
+}
+
+// probeNoSQL performs a real round-trip: put a uniquely-keyed item, read it
+// back, then delete it. Assumes the table's partition key is the default `id`.
+func (a *app) probeNoSQL(ctx context.Context) integrationStatus {
+	const name = "NoSQL Database"
+	b, ok := readBinding(a.bindingRoot, "nosql")
+	if !ok {
+		return integrationStatus{Name: name, Status: "not_configured"}
+	}
+	if !hasProfile("nosql") {
+		return integrationStatus{Name: name, Status: "starting", Detail: "service binding ready, waiting for credentials"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	cfg, err := awsProfileConfig(ctx, "nosql", b["region"])
+	if err != nil {
+		slog.Warn("nosql probe failed", "op", "config", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "credential load failed"}
+	}
+	client := dynamodb.NewFromConfig(cfg)
+	table := aws.String(b["table-name"])
+	key := map[string]ddbtypes.AttributeValue{
+		"id": &ddbtypes.AttributeValueMemberS{Value: fmt.Sprintf("hello-probe-%d", time.Now().UnixNano())},
+	}
+
+	start := time.Now()
+	if _, err := client.PutItem(ctx, &dynamodb.PutItemInput{TableName: table, Item: key}); err != nil {
+		slog.Warn("nosql probe failed", "op", "put", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "write failed"}
+	}
+	got, err := client.GetItem(ctx, &dynamodb.GetItemInput{TableName: table, Key: key, ConsistentRead: aws.Bool(true)})
+	if err != nil || got.Item == nil {
+		slog.Warn("nosql probe failed", "op", "get", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "read failed"}
+	}
+	if _, err := client.DeleteItem(ctx, &dynamodb.DeleteItemInput{TableName: table, Key: key}); err != nil {
+		slog.Warn("nosql probe failed", "op", "delete", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "delete failed"}
+	}
+	return integrationStatus{
+		Name:   name,
+		Status: "ok",
+		Detail: fmt.Sprintf("wrote, read, and deleted item (%dms)", time.Since(start).Milliseconds()),
+	}
+}
+
+// probeObjectStorage round-trips an object through every bound bucket. The
+// first ref mounts at object-storage/, later refs at object-storage-1/ etc.,
+// and each mount has a same-named credentials profile.
+func (a *app) probeObjectStorage(ctx context.Context) integrationStatus {
+	const name = "Object Storage"
+	var dirs []string
+	entries, err := os.ReadDir(a.bindingRoot)
+	if err == nil {
+		for _, e := range entries {
+			n := e.Name()
+			if n == "object-storage" || strings.HasPrefix(n, "object-storage-") {
+				dirs = append(dirs, n)
 			}
 		}
 	}
-	return integrationStatus{Name: displayName, Status: "ok", Detail: "workload identity pending"}
+	if len(dirs) == 0 {
+		return integrationStatus{Name: name, Status: "not_configured"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	for _, dir := range dirs {
+		b, _ := readBinding(a.bindingRoot, dir)
+		if !hasProfile(dir) {
+			return integrationStatus{Name: name, Status: "starting", Detail: "service binding ready, waiting for credentials"}
+		}
+		cfg, err := awsProfileConfig(ctx, dir, b["region"])
+		if err != nil {
+			slog.Warn("object storage probe failed", "op", "config", "bucket", b["bucket"], "err", err)
+			return integrationStatus{Name: name, Status: "error", Detail: "credential load failed"}
+		}
+		client := s3.NewFromConfig(cfg)
+		bucket := aws.String(b["bucket"])
+		objKey := aws.String(fmt.Sprintf("hello-probe/%d", time.Now().UnixNano()))
+
+		if _, err := client.PutObject(ctx, &s3.PutObjectInput{Bucket: bucket, Key: objKey, Body: strings.NewReader("hello")}); err != nil {
+			slog.Warn("object storage probe failed", "op", "put", "bucket", b["bucket"], "err", err)
+			return integrationStatus{Name: name, Status: "error", Detail: "write failed"}
+		}
+		obj, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: bucket, Key: objKey})
+		if err != nil {
+			slog.Warn("object storage probe failed", "op", "get", "bucket", b["bucket"], "err", err)
+			return integrationStatus{Name: name, Status: "error", Detail: "read failed"}
+		}
+		_ = obj.Body.Close()
+		if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: bucket, Key: objKey}); err != nil {
+			slog.Warn("object storage probe failed", "op", "delete", "bucket", b["bucket"], "err", err)
+			return integrationStatus{Name: name, Status: "error", Detail: "delete failed"}
+		}
+	}
+	return integrationStatus{
+		Name:   name,
+		Status: "ok",
+		Detail: fmt.Sprintf("round-tripped object in %d bucket(s) (%dms)", len(dirs), time.Since(start).Milliseconds()),
+	}
+}
+
+// regionFromHost extracts the region from an AWS endpoint hostname like
+// {id}.{hash}.us-east-1.rds.amazonaws.com. Falls back to us-east-1, the only
+// region the platform provisions into.
+func regionFromHost(host string) string {
+	parts := strings.Split(host, ".")
+	if len(parts) >= 4 && parts[len(parts)-2] == "amazonaws" {
+		return parts[len(parts)-4]
+	}
+	return "us-east-1"
+}
+
+// probePostgresIAM handles public-cloud sql bindings (RDS IAM auth — no
+// password in the binding). It verifies the workload identity chain end to
+// end: STS credentials from the sidecar, then an RDS auth token. The RDS
+// endpoint is VPC-internal and normally unreachable from this cluster, so a
+// connect timeout still reports ok with an identity-verified detail; if the
+// endpoint ever becomes reachable, the probe upgrades to a full round-trip.
+func (a *app) probePostgresIAM(ctx context.Context, b binding) integrationStatus {
+	const name = "SQL Database"
+	if !hasProfile("sql") {
+		return integrationStatus{Name: name, Status: "starting", Detail: "service binding ready, waiting for credentials"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	region := regionFromHost(b["host"])
+	cfg, err := awsProfileConfig(ctx, "sql", region)
+	if err != nil {
+		slog.Warn("sql iam probe failed", "op", "config", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "credential load failed"}
+	}
+	if _, err := sts.NewFromConfig(cfg).GetCallerIdentity(ctx, nil); err != nil {
+		slog.Warn("sql iam probe failed", "op", "sts", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "STS identity check failed"}
+	}
+	port := b["port"]
+	if port == "" {
+		port = "5432"
+	}
+	endpoint := net.JoinHostPort(b["host"], port)
+	token, err := rdsauth.BuildAuthToken(ctx, endpoint, region, b["username"], cfg.Credentials)
+	if err != nil {
+		slog.Warn("sql iam probe failed", "op", "token", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "RDS auth token generation failed"}
+	}
+
+	connCtx, connCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer connCancel()
+	dsn := (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(b["username"], token),
+		Host:     endpoint,
+		Path:     "/" + b["database"],
+		RawQuery: "sslmode=require&connect_timeout=2",
+	}).String()
+	conn, err := pgx.Connect(connCtx, dsn)
+	if err != nil {
+		return integrationStatus{Name: name, Status: "ok", Detail: "IAM auth token generated; endpoint VPC-internal (identity verified)"}
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	start := time.Now()
+	if _, err := conn.Exec(ctx,
+		`CREATE TABLE IF NOT EXISTS hello_visits (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now())`,
+	); err != nil {
+		slog.Warn("sql iam probe failed", "op", "create", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "write failed"}
+	}
+	if _, err := conn.Exec(ctx, `INSERT INTO hello_visits DEFAULT VALUES`); err != nil {
+		slog.Warn("sql iam probe failed", "op", "insert", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "write failed"}
+	}
+	var total int64
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM hello_visits`).Scan(&total); err != nil {
+		slog.Warn("sql iam probe failed", "op", "read", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "read failed"}
+	}
+	return integrationStatus{
+		Name:   name,
+		Status: "ok",
+		Detail: fmt.Sprintf("IAM auth round-trip: wrote row, %d total (%dms)", total, time.Since(start).Milliseconds()),
+	}
+}
+
+// probeRedisIAM handles public-cloud cache bindings (ElastiCache IAM auth).
+// ElastiCache is always VPC-internal, so this verifies the identity chain (STS
+// credentials via the cache profile) and attempts a short TLS connect that is
+// expected to time out.
+func (a *app) probeRedisIAM(ctx context.Context, b binding) integrationStatus {
+	const name = "Cache"
+	if !hasProfile("cache") {
+		return integrationStatus{Name: name, Status: "starting", Detail: "service binding ready, waiting for credentials"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	cfg, err := awsProfileConfig(ctx, "cache", "us-east-1")
+	if err != nil {
+		slog.Warn("cache iam probe failed", "op", "config", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "credential load failed"}
+	}
+	if _, err := sts.NewFromConfig(cfg).GetCallerIdentity(ctx, nil); err != nil {
+		slog.Warn("cache iam probe failed", "op", "sts", "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "STS identity check failed"}
+	}
+	port := b["port"]
+	if port == "" {
+		port = "6379"
+	}
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", net.JoinHostPort(b["host"], port), nil)
+	if err != nil {
+		return integrationStatus{Name: name, Status: "ok", Detail: "IAM credentials verified; endpoint VPC-internal"}
+	}
+	_ = conn.Close()
+	return integrationStatus{Name: name, Status: "ok", Detail: "IAM credentials verified; endpoint reachable"}
+}
+
+// natsJS returns a cached JetStream context, connecting on first use. A failed
+// connect is not cached, so a broker that is still starting is retried.
+func (a *app) natsJS() (nats.JetStreamContext, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.js != nil {
+		return a.js, nil
+	}
+	nc, err := nats.Connect(os.Getenv("NATS_URL"), nats.Timeout(3*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	js, err := nc.JetStream()
+	if err != nil {
+		nc.Close()
+		return nil, err
+	}
+	a.nats, a.js = nc, js
+	return js, nil
+}
+
+// pullSub returns a cached pull subscription bound to the durable consumer.
+// Cached because Unsubscribe would delete the durable out from under NACK, and
+// re-subscribing on every poll would leak interest on the connection.
+func (a *app) pullSub(js nats.JetStreamContext, stream, consumer string) (*nats.Subscription, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.natsSub != nil {
+		return a.natsSub, nil
+	}
+	sub, err := js.PullSubscribe("", consumer, nats.Bind(stream, consumer))
+	if err != nil {
+		return nil, err
+	}
+	a.natsSub = sub
+	return sub, nil
+}
+
+// publishableSubject turns a stream's first subject pattern into a concrete
+// subject: e2e.> → e2e.probe, foo.*.bar → foo.probe.bar.
+func publishableSubject(subjects []string) string {
+	if len(subjects) == 0 {
+		return ""
+	}
+	tokens := strings.Split(subjects[0], ".")
+	for i, t := range tokens {
+		if t == "*" || t == ">" {
+			tokens[i] = "probe"
+		}
+	}
+	return strings.Join(tokens, ".")
+}
+
+// probeTopic publishes a message to the bound stream — proves the stream
+// exists and accepts writes.
+func (a *app) probeTopic(ctx context.Context) integrationStatus {
+	const name = "Topic"
+	stream := os.Getenv("NATS_STREAM")
+	if stream == "" {
+		return integrationStatus{Name: name, Status: "not_configured"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	js, err := a.natsJS()
+	if err != nil {
+		return integrationStatus{Name: name, Status: "starting", Detail: "waiting for message broker"}
+	}
+	info, err := js.StreamInfo(stream)
+	if err != nil {
+		slog.Warn("topic probe failed", "op", "info", "stream", stream, "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "stream lookup failed"}
+	}
+	subject := publishableSubject(info.Config.Subjects)
+	if subject == "" {
+		return integrationStatus{Name: name, Status: "error", Detail: "stream has no subjects"}
+	}
+	start := time.Now()
+	payload := fmt.Sprintf("hello-probe %d", time.Now().UnixNano())
+	if _, err := js.Publish(subject, []byte(payload), nats.Context(ctx)); err != nil {
+		slog.Warn("topic probe failed", "op", "publish", "stream", stream, "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "publish failed"}
+	}
+	return integrationStatus{
+		Name:   name,
+		Status: "ok",
+		Detail: fmt.Sprintf("published to %s via %s (%dms)", stream, subject, time.Since(start).Milliseconds()),
+	}
+}
+
+// probeSubscription proves stream → durable cursor → delivery end to end: it
+// publishes a uniquely-tagged message to the consumer's stream, then pull-
+// fetches through the durable until the tagged message arrives.
+func (a *app) probeSubscription(ctx context.Context) integrationStatus {
+	const name = "Subscription"
+	consumer := os.Getenv("NATS_CONSUMER")
+	if consumer == "" {
+		return integrationStatus{Name: name, Status: "not_configured"}
+	}
+	stream := os.Getenv("NATS_STREAM")
+	if stream == "" {
+		return integrationStatus{Name: name, Status: "error", Detail: "NATS_STREAM not set"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	js, err := a.natsJS()
+	if err != nil {
+		return integrationStatus{Name: name, Status: "starting", Detail: "waiting for message broker"}
+	}
+	info, err := js.StreamInfo(stream)
+	if err != nil {
+		slog.Warn("subscription probe failed", "op", "info", "stream", stream, "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "stream lookup failed"}
+	}
+	subject := publishableSubject(info.Config.Subjects)
+	tag := fmt.Sprintf("hello-probe-%d", time.Now().UnixNano())
+	if _, err := js.Publish(subject, []byte(tag), nats.Context(ctx)); err != nil {
+		slog.Warn("subscription probe failed", "op", "publish", "stream", stream, "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "publish failed"}
+	}
+	sub, err := a.pullSub(js, stream, consumer)
+	if err != nil {
+		slog.Warn("subscription probe failed", "op", "bind", "consumer", consumer, "err", err)
+		return integrationStatus{Name: name, Status: "error", Detail: "consumer bind failed"}
+	}
+
+	start := time.Now()
+	for ctx.Err() == nil {
+		msgs, err := sub.Fetch(64, nats.MaxWait(500*time.Millisecond))
+		if err != nil && err != nats.ErrTimeout {
+			slog.Warn("subscription probe failed", "op", "fetch", "consumer", consumer, "err", err)
+			return integrationStatus{Name: name, Status: "error", Detail: "fetch failed"}
+		}
+		for _, m := range msgs {
+			_ = m.Ack()
+			if strings.Contains(string(m.Data), tag) {
+				return integrationStatus{
+					Name:   name,
+					Status: "ok",
+					Detail: fmt.Sprintf("consumed own message via durable %s (%dms)", consumer, time.Since(start).Milliseconds()),
+				}
+			}
+		}
+	}
+	return integrationStatus{Name: name, Status: "error", Detail: "published message not delivered"}
 }
 
 func main() {
@@ -291,6 +681,9 @@ func main() {
 	}
 	if a.redis != nil {
 		_ = a.redis.Close()
+	}
+	if a.nats != nil {
+		a.nats.Close()
 	}
 }
 

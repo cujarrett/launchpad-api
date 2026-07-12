@@ -129,20 +129,131 @@ func TestReadBinding(t *testing.T) {
 	}
 }
 
-func TestPresenceProbe(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "object-storage")
+// writeBinding creates <root>/<name>/ with one file per key.
+func writeBinding(t *testing.T, root, name string, keys map[string]string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "type"), []byte("s3"), 0o600); err != nil {
+	for k, v := range keys {
+		if err := os.WriteFile(filepath.Join(dir, k), []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestHasProfile(t *testing.T) {
+	creds := filepath.Join(t.TempDir(), "credentials")
+	if err := os.WriteFile(creds, []byte("[nosql]\naws_access_key_id = x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", creds)
 
-	if got := presenceProbe(root, "object-storage", "Object Storage"); got.Status != "ok" {
-		t.Errorf("status = %q, want ok", got.Status)
+	if !hasProfile("nosql") {
+		t.Error("hasProfile(nosql) = false, want true")
 	}
-	if got := presenceProbe(root, "nosql", "NoSQL Database"); got.Status != "not_configured" {
-		t.Errorf("status = %q, want not_configured", got.Status)
+	if hasProfile("cache") {
+		t.Error("hasProfile(cache) = true, want false (section not written yet)")
+	}
+}
+
+func TestProbeNoSQL_StartingUntilCredentialsWritten(t *testing.T) {
+	root := t.TempDir()
+	writeBinding(t, root, "nosql", map[string]string{"table-name": "foo", "region": "us-east-1"})
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "missing"))
+
+	a := &app{bindingRoot: root}
+	if got := a.probeNoSQL(context.Background()); got.Status != "starting" {
+		t.Errorf("status = %q, want starting (credentials not written yet)", got.Status)
+	}
+
+	a.bindingRoot = t.TempDir()
+	if got := a.probeNoSQL(context.Background()); got.Status != "not_configured" {
+		t.Errorf("status = %q, want not_configured (no binding)", got.Status)
+	}
+}
+
+func TestProbeObjectStorage_DiscoversRefDirs(t *testing.T) {
+	root := t.TempDir()
+	writeBinding(t, root, "object-storage", map[string]string{"bucket": "b0", "region": "us-east-1"})
+	writeBinding(t, root, "object-storage-1", map[string]string{"bucket": "b1", "region": "us-east-1"})
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "missing"))
+
+	a := &app{bindingRoot: root}
+	if got := a.probeObjectStorage(context.Background()); got.Status != "starting" {
+		t.Errorf("status = %q, want starting (both refs found, credentials pending)", got.Status)
+	}
+
+	a.bindingRoot = t.TempDir()
+	if got := a.probeObjectStorage(context.Background()); got.Status != "not_configured" {
+		t.Errorf("status = %q, want not_configured (no object-storage dirs)", got.Status)
+	}
+}
+
+func TestProbePostgres_DispatchesOnBindingShape(t *testing.T) {
+	root := t.TempDir()
+	// role-arn and no password → public-cloud IAM path, which reports starting
+	// until the sidecar writes the sql profile.
+	writeBinding(t, root, "sql", map[string]string{
+		"host": "db.abc.us-east-1.rds.amazonaws.com", "port": "5432",
+		"database": "foo", "username": "app", "role-arn": "arn:aws:iam::1:role/x",
+	})
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "missing"))
+
+	a := &app{bindingRoot: root}
+	got := a.probePostgres(context.Background())
+	if got.Status != "starting" {
+		t.Errorf("status = %q, want starting (IAM path, credentials pending)", got.Status)
+	}
+}
+
+func TestRegionFromHost(t *testing.T) {
+	if got := regionFromHost("foo.abc123.us-west-2.rds.amazonaws.com"); got != "us-west-2" {
+		t.Errorf("region = %q, want us-west-2", got)
+	}
+	if got := regionFromHost("postgres.e2e.svc.cluster.local"); got != "us-east-1" {
+		t.Errorf("region = %q, want us-east-1 fallback", got)
+	}
+}
+
+func TestPublishableSubject(t *testing.T) {
+	tests := []struct {
+		subjects []string
+		want     string
+	}{
+		{[]string{"e2e.>"}, "e2e.probe"},
+		{[]string{"foo.*.bar"}, "foo.probe.bar"},
+		{[]string{"plain.subject"}, "plain.subject"},
+		{nil, ""},
+	}
+	for _, tt := range tests {
+		if got := publishableSubject(tt.subjects); got != tt.want {
+			t.Errorf("publishableSubject(%v) = %q, want %q", tt.subjects, got, tt.want)
+		}
+	}
+}
+
+func TestNATSProbes_NotConfiguredWithoutEnv(t *testing.T) {
+	t.Setenv("NATS_STREAM", "")
+	t.Setenv("NATS_CONSUMER", "")
+	a := &app{bindingRoot: t.TempDir()}
+
+	if got := a.probeTopic(context.Background()); got.Status != "not_configured" {
+		t.Errorf("topic status = %q, want not_configured", got.Status)
+	}
+	if got := a.probeSubscription(context.Background()); got.Status != "not_configured" {
+		t.Errorf("subscription status = %q, want not_configured", got.Status)
+	}
+}
+
+func TestProbeSubscription_ErrorsWithoutStream(t *testing.T) {
+	t.Setenv("NATS_CONSUMER", "e2e-sub")
+	t.Setenv("NATS_STREAM", "")
+	a := &app{bindingRoot: t.TempDir()}
+
+	got := a.probeSubscription(context.Background())
+	if got.Status != "error" {
+		t.Errorf("status = %q, want error (consumer set but stream missing)", got.Status)
 	}
 }

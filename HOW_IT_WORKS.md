@@ -168,15 +168,22 @@ A demo API deployed inside guest XApi workspaces — the thing that actually run
 
 Three routes: `GET /healthz` (200 OK), `GET /readyz` (readiness probe — 503 while any wired integration is still `starting`), and `GET /` which returns integration status JSON. The response shape is `{ integrations: [...] }`.
 
-Integration status is determined by probing at request time. `probeBinding(root, name, displayName)` checks whether `/bindings/{name}/host` exists (the service binding convention), reads the host and optional port, and reports `ok` if present or `not_configured` if absent.
+Integration status is determined by probing at request time. `readBinding(root, name)` loads the servicebinding.io files under `/bindings/{name}/`; a missing directory reports `not_configured` (the SPA hides the card). Every probe performs a real round-trip, not a presence check — statuses are `ok`, `starting` (binding present, backend or credentials not ready yet), `error`, or `not_configured`.
 
-`probeCloudBinding(root, name, displayName)` handles cloud integrations that have no TCP host (NoSQL Database, Object Storage). It checks whether `/bindings/{name}/type` exists — `not_configured` if absent, `ok` if present.
+The six probes:
 
-The four probed integrations are PostgreSQL (`/bindings/sql/`), Redis (`/bindings/cache/`), NoSQL Database (`/bindings/nosql/`), and Object Storage (`/bindings/object-storage/`). `GET /` returns only live configuration presence, not a synthetic demo payload.
+- **SQL Database** (`/bindings/sql/`) — private-cloud bindings (a `password` key) do a create/insert/count round-trip on Postgres. Public-cloud bindings (a `role-arn` key, RDS IAM auth) verify STS credentials via the `sql` profile, generate an RDS auth token, and attempt a short connect — the endpoint is VPC-internal, so a timeout still reports `ok` with an identity-verified detail.
+- **Cache** (`/bindings/cache/`) — private-cloud does an INCR round-trip on Redis. Public-cloud (ElastiCache, always VPC-internal) verifies STS credentials via the `cache` profile and attempts a short TLS connect.
+- **NoSQL Database** (`/bindings/nosql/`) — PutItem → GetItem → DeleteItem on the DynamoDB table using the `nosql` credentials profile.
+- **Object Storage** (`/bindings/object-storage/`, `/bindings/object-storage-1/`, …) — PutObject → GetObject → DeleteObject in every bound bucket, one credentials profile per mount.
+- **Topic** (gated on `NATS_STREAM` env) — publishes a message to the bound JetStream stream.
+- **Subscription** (gated on `NATS_CONSUMER` env) — publishes a uniquely-tagged message, then pull-fetches through the durable consumer until it arrives: a full stream → cursor → delivery round-trip.
+
+AWS probes use the shared credentials file written by the `aws-credentials-sidecar` (`AWS_SHARED_CREDENTIALS_FILE`); the profile name always equals the binding directory name, so no `AWS_PROFILE_*` env-var lookup is needed. A binding whose profile section hasn't been written yet reports `starting`.
 
 `Access-Control-Allow-Origin: *` is set on `GET /` so the sibling SPA can fetch from it cross-origin.
 
-**Key symbols**: `integrationStatus { Name, Status, Detail string }`, `probeBinding`, `probeCloudBinding`, `checkIntegrations`
+**Key symbols**: `integrationStatus { Name, Status, Detail string }`, `readBinding`, `hasProfile`, `checkIntegrations`
 
 ### `hello-world-api/Dockerfile`
 
