@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -161,15 +162,30 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	now := time.Now().UTC()
 	metaYAML := fmt.Sprintf("createdAt: %q\nslot: %q\n", now.Format(time.RFC3339), slot)
 
+	// namespace.yaml and guest.yaml are independent files with no shared tree
+	// state, so write them concurrently instead of paying two round trips'
+	// worth of GitHub API latency back to back.
 	nsPath := fmt.Sprintf("%s/namespace.yaml", fullName)
-	if err := a.gh.upsertFile(ctx, nsPath, "feat: create guest workspace "+fullName, RenderNamespace(fullName)); err != nil {
-		slog.Error("create guest namespace", "workspace", fullName, "err", err)
+	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
+	var nsErr, metaErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		nsErr = a.gh.upsertFile(ctx, nsPath, "feat: create guest workspace "+fullName, RenderNamespace(fullName))
+	}()
+	go func() {
+		defer wg.Done()
+		metaErr = a.gh.upsertFile(ctx, metaPath, "feat: create guest meta "+fullName, metaYAML)
+	}()
+	wg.Wait()
+	if nsErr != nil {
+		slog.Error("create guest namespace", "workspace", fullName, "err", nsErr)
 		http.Error(w, "failed to create workspace", http.StatusInternalServerError)
 		return
 	}
-	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
-	if err := a.gh.upsertFile(ctx, metaPath, "feat: create guest meta "+fullName, metaYAML); err != nil {
-		slog.Error("create guest meta", "workspace", fullName, "err", err)
+	if metaErr != nil {
+		slog.Error("create guest meta", "workspace", fullName, "err", metaErr)
 		http.Error(w, "failed to create workspace metadata", http.StatusInternalServerError)
 		return
 	}
@@ -221,24 +237,38 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	wsSlot, err := a.validateGuestWorkspace(ctx, workspaceName)
-	if err == errWorkspaceNotFound {
+	// Validating the workspace and listing its files are independent reads —
+	// run them concurrently instead of paying two round trips back to back.
+	var wsSlot string
+	var validateErr, listErr error
+	var entries []ghEntry
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		wsSlot, validateErr = a.validateGuestWorkspace(ctx, workspaceName)
+	}()
+	go func() {
+		defer wg.Done()
+		entries, listErr = a.gh.listDir(ctx, workspaceName)
+	}()
+	wg.Wait()
+
+	if validateErr == errWorkspaceNotFound {
 		http.NotFound(w, r)
 		return
 	}
-	if err == errWorkspaceExpired {
+	if validateErr == errWorkspaceExpired {
 		http.Error(w, "guest workspace has expired", http.StatusGone)
 		return
 	}
-	if err != nil {
-		slog.Error("create guest resource batch: validate workspace", "err", err)
+	if validateErr != nil {
+		slog.Error("create guest resource batch: validate workspace", "err", validateErr)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
-
-	entries, err := a.gh.listDir(ctx, workspaceName)
-	if err != nil {
-		slog.Error("create guest resource batch: list files", "err", err)
+	if listErr != nil {
+		slog.Error("create guest resource batch: list files", "err", listErr)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
