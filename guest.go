@@ -922,18 +922,29 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		liveWorkspaces = append(liveWorkspaces, ws)
 	}
 
-	totalResources := 0
-	for _, ws := range liveWorkspaces {
-		entries, listErr := a.gh.listDir(ctx, ws.Name)
-		if listErr != nil {
-			slog.Warn("metrics: list workspace", "workspace", ws.Name, "err", listErr)
-			continue
-		}
-		for _, e := range entries {
-			if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
-				totalResources++
+	counts := make([]int, len(liveWorkspaces))
+	var wg sync.WaitGroup
+	for i, ws := range liveWorkspaces {
+		wg.Add(1)
+		go func(idx int, name string) {
+			defer wg.Done()
+			entries, listErr := a.gh.listDir(ctx, name)
+			if listErr != nil {
+				slog.Warn("metrics: list workspace", "workspace", name, "err", listErr)
+				return
 			}
-		}
+			for _, e := range entries {
+				if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
+					counts[idx]++
+				}
+			}
+		}(i, ws.Name)
+	}
+	wg.Wait()
+
+	totalResources := 0
+	for _, c := range counts {
+		totalResources += c
 	}
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
