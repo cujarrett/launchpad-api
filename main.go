@@ -31,6 +31,33 @@ type app struct {
 
 	staleGuestMu     sync.Mutex
 	staleGuestMisses map[string]int
+
+	guestMetaMu sync.Mutex
+	guestMetaLk map[string]*sync.Mutex
+}
+
+// lockGuestMeta returns a per-workspace mutex so concurrent phase updates to
+// the same guest.yaml serialize instead of racing a read-modify-write.
+func (a *app) lockGuestMeta(name string) *sync.Mutex {
+	a.guestMetaMu.Lock()
+	defer a.guestMetaMu.Unlock()
+	if a.guestMetaLk == nil {
+		a.guestMetaLk = map[string]*sync.Mutex{}
+	}
+	lk, ok := a.guestMetaLk[name]
+	if !ok {
+		lk = &sync.Mutex{}
+		a.guestMetaLk[name] = lk
+	}
+	return lk
+}
+
+// forgetGuestMeta drops a deleted workspace's lock entry so guestMetaLk
+// doesn't grow unbounded over the server's lifetime.
+func (a *app) forgetGuestMeta(name string) {
+	a.guestMetaMu.Lock()
+	defer a.guestMetaMu.Unlock()
+	delete(a.guestMetaLk, name)
 }
 
 // invalidateWorkspacesCache forces the next /api/workspaces request to fetch

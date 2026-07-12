@@ -527,13 +527,26 @@ func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	// Phase times are best-effort telemetry (elapsed-time-per-stage display),
+	// not something the UI needs to block on, so persist in the background.
+	// A per-workspace lock keeps concurrent phase writes from racing.
+	go a.persistGuestPhase(context.Background(), workspaceName, req.Phase, req.Done)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string, done bool) {
+	lk := a.lockGuestMeta(workspaceName)
+	lk.Lock()
+	defer lk.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	metaPath := workspaceName + "/guest.yaml"
 	content, err := a.gh.fileContent(ctx, metaPath)
 	if err != nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		slog.Warn("record guest phase: workspace not found", "workspace", workspaceName, "err", err)
 		return
 	}
 
@@ -544,36 +557,32 @@ func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
 		DoneAt     string            `yaml:"doneAt,omitempty"`
 	}
 	if err := yaml.Unmarshal(content, &raw); err != nil {
-		http.Error(w, "failed to parse workspace metadata", http.StatusInternalServerError)
+		slog.Warn("record guest phase: parse metadata", "workspace", workspaceName, "err", err)
 		return
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	if req.Done {
+	if done {
 		if raw.DoneAt == "" {
 			raw.DoneAt = now
 		}
-	} else if req.Phase != "" {
+	} else if phase != "" {
 		if raw.PhaseTimes == nil {
 			raw.PhaseTimes = make(map[string]string)
 		}
-		if _, exists := raw.PhaseTimes[req.Phase]; !exists {
-			raw.PhaseTimes[req.Phase] = now
+		if _, exists := raw.PhaseTimes[phase]; !exists {
+			raw.PhaseTimes[phase] = now
 		}
 	}
 
 	updated, err := yaml.Marshal(raw)
 	if err != nil {
-		http.Error(w, "failed to serialize metadata", http.StatusInternalServerError)
+		slog.Warn("record guest phase: serialize metadata", "workspace", workspaceName, "err", err)
 		return
 	}
-	if err := a.gh.upsertFile(ctx, metaPath, "chore: record phase "+req.Phase+" for "+workspaceName, string(updated)); err != nil {
-		slog.Warn("record guest phase: upsert", "workspace", workspaceName, "phase", req.Phase, "err", err)
-		http.Error(w, "failed to persist phase time", http.StatusInternalServerError)
-		return
+	if err := a.gh.upsertFile(ctx, metaPath, "chore: record phase "+phase+" for "+workspaceName, string(updated)); err != nil {
+		slog.Warn("record guest phase: upsert", "workspace", workspaceName, "phase", phase, "err", err)
 	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // loadGuestWorkspaces lists all live guest-* workspaces with their expiry times,
@@ -703,6 +712,7 @@ func (a *app) cleanupExpiredGuests(ctx context.Context) {
 // listed, a read-after-write consistency hiccup rather than a real absence.
 func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 	defer a.invalidateWorkspacesCache()
+	defer a.forgetGuestMeta(name)
 
 	entries, err := a.gh.listDir(ctx, name)
 	if err != nil {
@@ -777,9 +787,9 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 // succeeds or the bound elapses. The guest namespace doesn't exist yet when
 // this is first called — it was just committed to git and still needs an
 // ArgoCD sync — so early attempts are expected to fail with "not found"
-// until the namespace shows up. There's no RBAC grant for launchpad-api to
-// get namespaces directly, so this retries the real operation instead of
-// polling namespace existence first.
+// until the namespace shows up. launchpad-api has no RBAC grant to get
+// namespaces directly, so readiness is inferred from the copy itself
+// succeeding rather than a separate existence check.
 func (a *app) copyDemoTLSSecretsWhenReady(ctx context.Context, slot, targetNamespace string) {
 	if a.dynClient == nil {
 		slog.Warn("copyDemoTLSSecrets: no k8s client, skipping")
