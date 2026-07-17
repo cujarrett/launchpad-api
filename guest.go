@@ -177,31 +177,22 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	now := time.Now().UTC()
 	metaYAML := fmt.Sprintf("createdAt: %q\nslot: %q\n", now.Format(time.RFC3339), slot)
 
-	// namespace.yaml and guest.yaml are independent files with no shared tree
-	// state, so write them concurrently instead of paying two round trips'
-	// worth of GitHub API latency back to back.
+	// namespace.yaml and guest.yaml must land together: a workspace with a
+	// namespace but no guest.yaml is invisible to loadGuestWorkspaces' used-name
+	// check, which lets a future create reuse this name while the leaked
+	// namespace is still live in the cluster. Two independent upsertFile calls
+	// used to write these concurrently, but concurrent single-file commits race
+	// on the branch tip and one can 409 (see upsertFilesAtomic's doc comment).
+	// Write both files in one atomic commit instead.
 	nsPath := fmt.Sprintf("%s/namespace.yaml", fullName)
 	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
-	var nsErr, metaErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		nsErr = a.gh.upsertFile(ctx, nsPath, "feat: create guest workspace "+fullName, RenderNamespace(fullName))
-	}()
-	go func() {
-		defer wg.Done()
-		metaErr = a.gh.upsertFile(ctx, metaPath, "feat: create guest meta "+fullName, metaYAML)
-	}()
-	wg.Wait()
-	if nsErr != nil {
-		slog.Error("create guest namespace", "workspace", fullName, "err", nsErr)
-		http.Error(w, "failed to create workspace", http.StatusInternalServerError)
-		return
+	files := []batchFile{
+		{Path: nsPath, Content: RenderNamespace(fullName)},
+		{Path: metaPath, Content: metaYAML},
 	}
-	if metaErr != nil {
-		slog.Error("create guest meta", "workspace", fullName, "err", metaErr)
-		http.Error(w, "failed to create workspace metadata", http.StatusInternalServerError)
+	if err := a.gh.upsertFilesAtomic(ctx, files, "feat: create guest workspace "+fullName); err != nil {
+		slog.Error("create guest workspace", "workspace", fullName, "err", err)
+		http.Error(w, "failed to create workspace", http.StatusInternalServerError)
 		return
 	}
 
