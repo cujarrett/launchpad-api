@@ -77,7 +77,7 @@ func TestValidate_Spa_MissingHost(t *testing.T) {
 	}
 }
 
-func TestValidate_XTopic_Valid(t *testing.T) {
+func TestValidate_Topic_Valid(t *testing.T) {
 	err := validate(writeRequest{
 		Kind:   "Topic",
 		Name:   "my-topic",
@@ -88,7 +88,7 @@ func TestValidate_XTopic_Valid(t *testing.T) {
 	}
 }
 
-func TestValidate_XSubscription_Valid(t *testing.T) {
+func TestValidate_Subscription_Valid(t *testing.T) {
 	err := validate(writeRequest{
 		Kind:   "Subscription",
 		Name:   "my-sub",
@@ -99,7 +99,7 @@ func TestValidate_XSubscription_Valid(t *testing.T) {
 	}
 }
 
-func TestValidate_XWordpress_Valid(t *testing.T) {
+func TestValidate_Wordpress_Valid(t *testing.T) {
 	err := validate(writeRequest{
 		Kind:   "Wordpress",
 		Name:   "my-wp",
