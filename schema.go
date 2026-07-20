@@ -13,14 +13,14 @@ import (
 )
 
 var kindToXRD = map[string]string{
-	"XSpa":           "xspas.platform.local.lab",
-	"XApi":           "xapis.platform.local.lab",
-	"XSql":           "xsqls.platform.local.lab",
-	"XNoSql":         "xnosqls.platform.local.lab",
-	"XObjectStorage": "xobjectstorages.platform.local.lab",
-	"XTopic":         "xtopics.platform.local.lab",
-	"XSubscription":  "xsubscriptions.platform.local.lab",
-	"XWordpress":     "xwordpresses.platform.local.lab",
+	"Spa":           "spas.platform.local.lab",
+	"Api":           "apis.platform.local.lab",
+	"Sql":           "sqls.platform.local.lab",
+	"NoSql":         "nosqls.platform.local.lab",
+	"ObjectStorage": "objectstorages.platform.local.lab",
+	"Topic":         "topics.platform.local.lab",
+	"Subscription":  "subscriptions.platform.local.lab",
+	"Wordpress":     "wordpresses.platform.local.lab",
 }
 
 var xrdGVR = schema.GroupVersionResource{
@@ -151,20 +151,20 @@ func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 
 // kindToPlural maps ResourceKind → plural used in GVR.
 var kindToPlural = map[string]string{
-	"XSpa":           "xspas",
-	"XApi":           "xapis",
-	"XSql":           "xsqls",
-	"XNoSql":         "xnosqls",
-	"XObjectStorage": "xobjectstorages",
-	"XTopic":         "xtopics",
-	"XSubscription":  "xsubscriptions",
-	"XWordpress":     "xwordpresses",
+	"Spa":           "spas",
+	"Api":           "apis",
+	"Sql":           "sqls",
+	"NoSql":         "nosqls",
+	"ObjectStorage": "objectstorages",
+	"Topic":         "topics",
+	"Subscription":  "subscriptions",
+	"Wordpress":     "wordpresses",
 }
 
 // namespacedKinds lists XR kinds whose CRD scope is Namespaced.
 // All others are Cluster-scoped and do not require a namespace in Get calls.
 var namespacedKinds = map[string]bool{
-	"XWordpress": true,
+	"Wordpress": true,
 }
 
 func xrClient(client dynamic.Interface, gvr schema.GroupVersionResource, kind, namespace string) dynamic.ResourceInterface {
@@ -183,7 +183,7 @@ func findResourceParams(ctx context.Context, client dynamic.Interface, tenant, n
 			continue
 		}
 		t, _, _ := unstructured.NestedString(obj.Object, "spec", "parameters", "namespace")
-		// t == "" means this kind has no namespace param (e.g. XTopic, XSubscription) — accept the match.
+		// t == "" means this kind has no namespace param (e.g. Topic, Subscription) — accept the match.
 		if t != "" && t != tenant {
 			continue
 		}

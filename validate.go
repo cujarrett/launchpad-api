@@ -31,25 +31,25 @@ func validate(req writeRequest) error {
 	}
 
 	switch req.Kind {
-	case "XSpa":
+	case "Spa":
 		if err := requireFields(p, "image", "host"); err != nil {
 			return err
 		}
-	case "XApi":
+	case "Api":
 		if err := requireFields(p, "image"); err != nil {
 			return err
 		}
-	case "XSql", "XNoSql", "XObjectStorage":
+	case "Sql", "NoSql", "ObjectStorage":
 		// no required fields beyond name
-	case "XTopic":
+	case "Topic":
 		if err := requireFields(p, "streamName", "subjects"); err != nil {
 			return err
 		}
-	case "XSubscription":
+	case "Subscription":
 		if err := requireFields(p, "topicRef"); err != nil {
 			return err
 		}
-	case "XWordpress":
+	case "Wordpress":
 		if err := requireFields(p, "host"); err != nil {
 			return err
 		}

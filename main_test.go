@@ -17,14 +17,14 @@ func TestValidate_MissingKind(t *testing.T) {
 }
 
 func TestValidate_MissingName(t *testing.T) {
-	err := validate(writeRequest{Kind: "XApi"})
+	err := validate(writeRequest{Kind: "Api"})
 	if err == nil || !strings.Contains(err.Error(), "name is required") {
 		t.Fatalf("expected name error, got %v", err)
 	}
 }
 
 func TestValidate_InvalidName(t *testing.T) {
-	err := validate(writeRequest{Kind: "XApi", Name: "UPPERCASE"})
+	err := validate(writeRequest{Kind: "Api", Name: "UPPERCASE"})
 	if err == nil || !strings.Contains(err.Error(), "invalid resource name") {
 		t.Fatalf("expected name validation error, got %v", err)
 	}
@@ -39,7 +39,7 @@ func TestValidate_UnknownKind(t *testing.T) {
 
 func TestValidate_XApi_Valid(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XApi",
+		Kind:   "Api",
 		Name:   "my-api",
 		Params: map[string]any{"image": "ghcr.io/foo/bar:latest"},
 	})
@@ -49,7 +49,7 @@ func TestValidate_XApi_Valid(t *testing.T) {
 }
 
 func TestValidate_XApi_MissingImage(t *testing.T) {
-	err := validate(writeRequest{Kind: "XApi", Name: "my-api"})
+	err := validate(writeRequest{Kind: "Api", Name: "my-api"})
 	if err == nil || !strings.Contains(err.Error(), "params.image") {
 		t.Fatalf("expected image error, got %v", err)
 	}
@@ -57,7 +57,7 @@ func TestValidate_XApi_MissingImage(t *testing.T) {
 
 func TestValidate_XSpa_Valid(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XSpa",
+		Kind:   "Spa",
 		Name:   "my-spa",
 		Params: map[string]any{"image": "ghcr.io/foo/spa:1.0", "host": "spa.example.com"},
 	})
@@ -68,7 +68,7 @@ func TestValidate_XSpa_Valid(t *testing.T) {
 
 func TestValidate_XSpa_MissingHost(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XSpa",
+		Kind:   "Spa",
 		Name:   "my-spa",
 		Params: map[string]any{"image": "ghcr.io/foo/spa:1.0"},
 	})
@@ -79,7 +79,7 @@ func TestValidate_XSpa_MissingHost(t *testing.T) {
 
 func TestValidate_XTopic_Valid(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XTopic",
+		Kind:   "Topic",
 		Name:   "my-topic",
 		Params: map[string]any{"streamName": "events", "subjects": []string{"foo.>"}},
 	})
@@ -90,7 +90,7 @@ func TestValidate_XTopic_Valid(t *testing.T) {
 
 func TestValidate_XSubscription_Valid(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XSubscription",
+		Kind:   "Subscription",
 		Name:   "my-sub",
 		Params: map[string]any{"topicRef": "events"},
 	})
@@ -101,7 +101,7 @@ func TestValidate_XSubscription_Valid(t *testing.T) {
 
 func TestValidate_XWordpress_Valid(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XWordpress",
+		Kind:   "Wordpress",
 		Name:   "my-wp",
 		Params: map[string]any{"host": "wp.example.com"},
 	})
@@ -112,7 +112,7 @@ func TestValidate_XWordpress_Valid(t *testing.T) {
 
 func TestValidate_NewlineInjection(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XApi",
+		Kind:   "Api",
 		Name:   "my-api",
 		Params: map[string]any{"image": "foo\nbar: injected"},
 	})
@@ -123,7 +123,7 @@ func TestValidate_NewlineInjection(t *testing.T) {
 
 func TestValidate_CarriageReturnInjection(t *testing.T) {
 	err := validate(writeRequest{
-		Kind:   "XApi",
+		Kind:   "Api",
 		Name:   "my-api",
 		Params: map[string]any{"image": "foo\rbar"},
 	})
@@ -138,7 +138,7 @@ func TestValidate_CarriageReturnInjection(t *testing.T) {
 
 func TestRenderResource_XApi(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
-		Kind:      "XApi",
+		Kind:      "Api",
 		Name:      "my-api",
 		Workspace: "dev",
 		Params:    map[string]any{"image": "ghcr.io/foo/bar:1.0", "namespace": "dev"},
@@ -146,7 +146,7 @@ func TestRenderResource_XApi(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"kind: XApi", "name: my-api", "image: ghcr.io/foo/bar:1.0"} {
+	for _, want := range []string{"kind: Api", "name: my-api", "image: ghcr.io/foo/bar:1.0"} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in rendered YAML:\n%s", want, yaml)
 		}
@@ -155,7 +155,7 @@ func TestRenderResource_XApi(t *testing.T) {
 
 func TestRenderResource_XApi_DefaultPort(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
-		Kind:   "XApi",
+		Kind:   "Api",
 		Name:   "my-api",
 		Params: map[string]any{"image": "foo:latest", "namespace": "dev"},
 	})
@@ -169,14 +169,14 @@ func TestRenderResource_XApi_DefaultPort(t *testing.T) {
 
 func TestRenderResource_XSpa(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
-		Kind:   "XSpa",
+		Kind:   "Spa",
 		Name:   "my-spa",
 		Params: map[string]any{"image": "foo:latest", "host": "spa.example.com", "namespace": "dev"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"kind: XSpa", "host: spa.example.com"} {
+	for _, want := range []string{"kind: Spa", "host: spa.example.com"} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in rendered YAML:\n%s", want, yaml)
 		}
@@ -185,7 +185,7 @@ func TestRenderResource_XSpa(t *testing.T) {
 
 func TestRenderResource_XSpa_DefaultTLSIssuer(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
-		Kind:   "XSpa",
+		Kind:   "Spa",
 		Name:   "my-spa",
 		Params: map[string]any{"image": "foo:latest", "host": "spa.example.com", "namespace": "dev"},
 	})
@@ -199,7 +199,7 @@ func TestRenderResource_XSpa_DefaultTLSIssuer(t *testing.T) {
 
 func TestRenderResource_XApi_OptionalHost(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
-		Kind:   "XApi",
+		Kind:   "Api",
 		Name:   "my-api",
 		Params: map[string]any{"image": "foo:latest", "namespace": "dev", "host": "api.example.com"},
 	})
@@ -213,15 +213,15 @@ func TestRenderResource_XApi_OptionalHost(t *testing.T) {
 
 func TestRenderResource_XSql(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
-		Kind:   "XSql",
+		Kind:   "Sql",
 		Name:   "my-db",
 		Params: map[string]any{"namespace": "dev"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "kind: XSql") {
-		t.Errorf("expected kind XSql in rendered YAML:\n%s", yaml)
+	if !strings.Contains(yaml, "kind: Sql") {
+		t.Errorf("expected kind Sql in rendered YAML:\n%s", yaml)
 	}
 }
 

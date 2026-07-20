@@ -92,7 +92,7 @@ curl http://localhost:8080/healthz
 
 ## Deployment
 
-ARM64 Docker image built by CI, pushed to GHCR, deployed as an `XApi` XR via ArgoCD. A `launchpad-secrets` Kubernetes Secret injects `LAUNCHPAD_API`, `ENTRA_TENANT_ID`, and `ENTRA_API_CLIENT_ID` via `envFrom`.
+ARM64 Docker image built by CI, pushed to GHCR, deployed as an `Api` XR via ArgoCD. A `launchpad-secrets` Kubernetes Secret injects `LAUNCHPAD_API`, `ENTRA_TENANT_ID`, and `ENTRA_API_CLIENT_ID` via `envFrom`.
 
 ### Rotating `LAUNCHPAD_API`
 

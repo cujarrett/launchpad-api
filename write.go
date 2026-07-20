@@ -112,7 +112,7 @@ type batchFile struct {
 }
 
 // upsertFilesAtomic writes multiple files in a single commit via the Git Data
-// API (tree/commit/ref), so a batch of related resources (e.g. an XApi plus
+// API (tree/commit/ref), so a batch of related resources (e.g. an Api plus
 // its database/storage add-ons) either all land or none do.
 //
 // Other endpoints (e.g. phase recording) write to the same branch via
