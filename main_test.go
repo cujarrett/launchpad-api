@@ -37,7 +37,7 @@ func TestValidate_UnknownKind(t *testing.T) {
 	}
 }
 
-func TestValidate_XApi_Valid(t *testing.T) {
+func TestValidate_Api_Valid(t *testing.T) {
 	err := validate(writeRequest{
 		Kind:   "Api",
 		Name:   "my-api",
@@ -48,14 +48,14 @@ func TestValidate_XApi_Valid(t *testing.T) {
 	}
 }
 
-func TestValidate_XApi_MissingImage(t *testing.T) {
+func TestValidate_Api_MissingImage(t *testing.T) {
 	err := validate(writeRequest{Kind: "Api", Name: "my-api"})
 	if err == nil || !strings.Contains(err.Error(), "params.image") {
 		t.Fatalf("expected image error, got %v", err)
 	}
 }
 
-func TestValidate_XSpa_Valid(t *testing.T) {
+func TestValidate_Spa_Valid(t *testing.T) {
 	err := validate(writeRequest{
 		Kind:   "Spa",
 		Name:   "my-spa",
@@ -66,7 +66,7 @@ func TestValidate_XSpa_Valid(t *testing.T) {
 	}
 }
 
-func TestValidate_XSpa_MissingHost(t *testing.T) {
+func TestValidate_Spa_MissingHost(t *testing.T) {
 	err := validate(writeRequest{
 		Kind:   "Spa",
 		Name:   "my-spa",
@@ -136,7 +136,7 @@ func TestValidate_CarriageReturnInjection(t *testing.T) {
 // RenderResource
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestRenderResource_XApi(t *testing.T) {
+func TestRenderResource_Api(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:      "Api",
 		Name:      "my-api",
@@ -153,7 +153,7 @@ func TestRenderResource_XApi(t *testing.T) {
 	}
 }
 
-func TestRenderResource_XApi_DefaultPort(t *testing.T) {
+func TestRenderResource_Api_DefaultPort(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:   "Api",
 		Name:   "my-api",
@@ -167,7 +167,7 @@ func TestRenderResource_XApi_DefaultPort(t *testing.T) {
 	}
 }
 
-func TestRenderResource_XSpa(t *testing.T) {
+func TestRenderResource_Spa(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:   "Spa",
 		Name:   "my-spa",
@@ -183,7 +183,7 @@ func TestRenderResource_XSpa(t *testing.T) {
 	}
 }
 
-func TestRenderResource_XSpa_DefaultTLSIssuer(t *testing.T) {
+func TestRenderResource_Spa_DefaultTLSIssuer(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:   "Spa",
 		Name:   "my-spa",
@@ -197,7 +197,7 @@ func TestRenderResource_XSpa_DefaultTLSIssuer(t *testing.T) {
 	}
 }
 
-func TestRenderResource_XApi_OptionalHost(t *testing.T) {
+func TestRenderResource_Api_OptionalHost(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:   "Api",
 		Name:   "my-api",
@@ -211,7 +211,7 @@ func TestRenderResource_XApi_OptionalHost(t *testing.T) {
 	}
 }
 
-func TestRenderResource_XSql(t *testing.T) {
+func TestRenderResource_Sql(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:   "Sql",
 		Name:   "my-db",

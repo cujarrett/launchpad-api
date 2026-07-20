@@ -399,15 +399,15 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
-			// Support "{slug}-{kind}" names (e.g. "phantom-burrito-sql"), legacy short names
-			// ("sql"), and old prefixed names ("xsql-{slug}").
-			if base == "sql" || strings.HasSuffix(base, "-sql") || strings.HasPrefix(base, "xsql-") {
+			// Support "{slug}-{kind}" names (e.g. "phantom-burrito-sql") and legacy short
+			// names ("sql").
+			if base == "sql" || strings.HasSuffix(base, "-sql") {
 				p["sqlRef"] = base
 			}
-			if base == "nosql" || strings.HasSuffix(base, "-nosql") || strings.HasPrefix(base, "xnosql-") {
+			if base == "nosql" || strings.HasSuffix(base, "-nosql") {
 				p["nosqlRef"] = base
 			}
-			if base == "store" || strings.HasSuffix(base, "-store") || strings.HasPrefix(base, "xobjectstorage-") {
+			if base == "store" || strings.HasSuffix(base, "-store") {
 				p["objectStorageRefs"] = base
 			}
 		}
@@ -443,7 +443,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a guest workspace", http.StatusForbidden)
 		return
 	}
-	if resourceName != "api" && !strings.HasSuffix(resourceName, "-api") && !strings.HasPrefix(resourceName, "xapi-") {
+	if resourceName != "api" && !strings.HasSuffix(resourceName, "-api") {
 		http.Error(w, "only Api resources can be patched", http.StatusBadRequest)
 		return
 	}
