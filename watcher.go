@@ -43,14 +43,14 @@ type xrResource struct {
 }
 
 var watchedResources = []xrResource{
-	{"xspas", "XSpa"},
-	{"xapis", "XApi"},
-	{"xsqls", "XSql"},
-	{"xnosqls", "XNoSql"},
-	{"xobjectstorages", "XObjectStorage"},
-	{"xtopics", "XTopic"},
-	{"xsubscriptions", "XSubscription"},
-	{"xwordpresses", "XWordpress"},
+	{"spas", "Spa"},
+	{"apis", "Api"},
+	{"sqls", "Sql"},
+	{"nosqls", "NoSql"},
+	{"objectstorages", "ObjectStorage"},
+	{"topics", "Topic"},
+	{"subscriptions", "Subscription"},
+	{"wordpresses", "Wordpress"},
 }
 
 const xrGroup = "platform.local.lab"
@@ -155,10 +155,10 @@ func watchResource(ctx context.Context, client dynamic.Interface, b *broadcaster
 
 // extractStatus pulls Crossplane conditions from an XR object.
 // Workspace resolution order:
-//  1. spec.parameters.namespace  — set by most XRs (XSpa, XApi, etc.)
-//  2. metadata.namespace         — set for namespaced XRs (XWordpress)
+//  1. spec.parameters.namespace  — set by most XRs (Spa, Api, etc.)
+//  2. metadata.namespace         — set for namespaced XRs (Wordpress)
 //  3. argocd tracking annotation — set for cluster-scoped XRs with no namespace
-//     param (XTopic, XSubscription): "app:group/Kind:namespace/name"
+//     param (Topic, Subscription): "app:group/Kind:namespace/name"
 func extractStatus(obj *unstructured.Unstructured, kind string) *ResourceStatus {
 	workspace, _, _ := unstructured.NestedString(obj.Object, "spec", "parameters", "namespace")
 	if workspace == "" {
@@ -332,7 +332,7 @@ func extractPodStatus(obj *unstructured.Unstructured) *ResourceStatus {
 		initContainers = append(initContainers, ics)
 	}
 
-	// Only broadcast pods that have binding init containers (i.e. XApi pods).
+	// Only broadcast pods that have binding init containers (i.e. Api pods).
 	if len(initContainers) == 0 {
 		return nil
 	}

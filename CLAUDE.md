@@ -22,7 +22,7 @@ launchpad-api is the Go backend-for-frontend for the Launchpad UI. It reads and 
 - **Language**: Go 1.26, stdlib only — no external dependencies
 - **Container**: Multi-stage Dockerfile, `linux/arm64`, non-root user
 - **CI/CD**: GitHub Actions → GHCR (`ghcr.io/cujarrett/launchpad-api`)
-- **Deployment**: Kubernetes via homelab XApi Crossplane XR
+- **Deployment**: Kubernetes via homelab Api Crossplane XR
 
 ## Project Structure
 

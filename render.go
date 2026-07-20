@@ -10,14 +10,14 @@ var templates = map[string]*template.Template{}
 
 func init() {
 	defs := map[string]string{
-		"XSpa":           xspaTemplate,
-		"XApi":           xapiTemplate,
-		"XSql":           xsqlTemplate,
-		"XNoSql":         xnosqlTemplate,
-		"XObjectStorage": xobjectstorageTemplate,
-		"XTopic":         xtopicTemplate,
-		"XSubscription":  xsubscriptionTemplate,
-		"XWordpress":     xwordpressTemplate,
+		"Spa":           spaTemplate,
+		"Api":           apiTemplate,
+		"Sql":           sqlTemplate,
+		"NoSql":         nosqlTemplate,
+		"ObjectStorage": objectstorageTemplate,
+		"Topic":         topicTemplate,
+		"Subscription":  subscriptionTemplate,
+		"Wordpress":     wordpressTemplate,
 	}
 	for kind, tmpl := range defs {
 		templates[kind] = template.Must(template.New(kind).Parse(tmpl))
@@ -46,8 +46,8 @@ func RenderNamespace(name string) string {
 // Templates — one per platform resource kind
 // ────────────────────────────────────────────────
 
-const xspaTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XSpa
+const spaTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Spa
 metadata:
   name: {{ .Name }}
 spec:
@@ -66,8 +66,8 @@ spec:
 {{- end }}
 `
 
-const xapiTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XApi
+const apiTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Api
 metadata:
   name: {{ .Name }}
 spec:
@@ -119,8 +119,8 @@ spec:
 {{- end }}
 `
 
-const xsqlTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XSql
+const sqlTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Sql
 metadata:
   name: {{ .Name }}
 spec:
@@ -139,8 +139,8 @@ spec:
 {{- end }}
 `
 
-const xnosqlTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XNoSql
+const nosqlTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: NoSql
 metadata:
   name: {{ .Name }}
 spec:
@@ -158,8 +158,8 @@ spec:
 {{- end }}
 `
 
-const xobjectstorageTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XObjectStorage
+const objectstorageTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: ObjectStorage
 metadata:
   name: {{ .Name }}
 spec:
@@ -171,8 +171,8 @@ spec:
 {{- end }}
 `
 
-const xtopicTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XTopic
+const topicTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Topic
 metadata:
   name: {{ .Name }}
 spec:
@@ -187,8 +187,8 @@ spec:
     replicas: {{ or .Params.replicas 3 }}
 `
 
-const xsubscriptionTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XSubscription
+const subscriptionTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Subscription
 metadata:
   name: {{ .Name }}
 spec:
@@ -203,8 +203,8 @@ spec:
     ackWait: {{ or .Params.ackWait "30s" }}
 `
 
-const xwordpressTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: XWordpress
+const wordpressTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Wordpress
 metadata:
   name: {{ .Name }}
 spec:

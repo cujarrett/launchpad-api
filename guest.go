@@ -212,7 +212,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// handleCreateGuestResourceBatch creates an XApi or XSpa plus any requested
+// handleCreateGuestResourceBatch creates an Api or Spa plus any requested
 // add-ons (SQL, NoSQL, object storage, a paired SPA/API) in a single atomic commit.
 func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Request) {
 	workspaceName := r.PathValue("name")
@@ -235,7 +235,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if req.Kind != "XApi" && req.Kind != "XSpa" {
+	if req.Kind != "Api" && req.Kind != "Spa" {
 		http.Error(w, fmt.Sprintf("kind %q is not available in guest workspaces", req.Kind), http.StatusUnprocessableEntity)
 		return
 	}
@@ -288,25 +288,25 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	// Build the ordered plan of kinds to create, mirroring the guest-create UI.
 	var plan []string
 	switch req.Kind {
-	case "XApi":
+	case "Api":
 		if req.WithStorage {
-			plan = append(plan, "XObjectStorage")
+			plan = append(plan, "ObjectStorage")
 		}
 		if req.WithSql {
-			plan = append(plan, "XSql")
+			plan = append(plan, "Sql")
 		}
 		if req.WithNoSql {
-			plan = append(plan, "XNoSql")
+			plan = append(plan, "NoSql")
 		}
 		if req.WithSpa {
-			plan = append(plan, "XSpa")
+			plan = append(plan, "Spa")
 		}
-		plan = append(plan, "XApi")
-	case "XSpa":
+		plan = append(plan, "Api")
+	case "Spa":
 		if req.WithApi {
-			plan = append(plan, "XApi")
+			plan = append(plan, "Api")
 		}
-		plan = append(plan, "XSpa")
+		plan = append(plan, "Spa")
 	}
 
 	if resourceCount+len(plan) > guestMaxResources {
@@ -315,7 +315,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Generate a resource name for every planned kind up front, and collect the
-	// full sibling file list (existing + about-to-be-created) so XApi's
+	// full sibling file list (existing + about-to-be-created) so Api's
 	// sqlRef/nosqlRef/objectStorageRefs wiring is correct in a single pass —
 	// no re-read from GitHub needed between resources.
 	allFileNames := make([]string, 0, len(entries)+len(plan))
@@ -340,7 +340,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	createdNames := make([]string, 0, len(plan))
 	for _, kind := range plan {
 		var guestImage string
-		if kind == "XSpa" {
+		if kind == "Spa" {
 			guestImage = envOrDefault("GUEST_SPA_IMAGE", "ghcr.io/cujarrett/hello-world-spa:latest")
 		} else {
 			guestImage = envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
@@ -388,7 +388,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		"namespace": workspace,
 	}
 	switch kind {
-	case "XApi":
+	case "Api":
 		p["image"] = image
 		p["port"] = 8080
 		if withCache {
@@ -411,21 +411,21 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 				p["objectStorageRefs"] = base
 			}
 		}
-	case "XSpa":
+	case "Spa":
 		p["image"] = image
 		p["host"] = fmt.Sprintf("%s.mattjarrett.dev", slot)
 		p["tlsSecret"] = slot + "-tls"
 		// hello-world-spa uses inline <style>/<script> and fetches the companion API
 		// on a different subdomain — relax CSP accordingly.
 		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"
-	case "XSql":
+	case "Sql":
 		p["backend"] = "private-cloud"
 		p["dataRetention"] = "delete"
-	case "XNoSql":
+	case "NoSql":
 		p["dataRetention"] = "delete"
-	case "XObjectStorage":
+	case "ObjectStorage":
 		p["dataRetention"] = "delete"
-	case "XTopic":
+	case "Topic":
 		streamName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 		p["streamName"] = streamName
 		p["subjects"] = []string{name + ".*"}
@@ -433,7 +433,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 	return p
 }
 
-// handlePatchGuestResource re-renders a guest XApi with updated connection params.
+// handlePatchGuestResource re-renders a guest Api with updated connection params.
 // Body: { withSql: bool, withCache: bool }. Returns 204 on success.
 func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 	workspaceName := r.PathValue("name")
@@ -444,7 +444,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if resourceName != "api" && !strings.HasSuffix(resourceName, "-api") && !strings.HasPrefix(resourceName, "xapi-") {
-		http.Error(w, "only XApi resources can be patched", http.StatusBadRequest)
+		http.Error(w, "only Api resources can be patched", http.StatusBadRequest)
 		return
 	}
 
@@ -512,9 +512,9 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 	guestImage := envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
 	wr := writeRequest{
 		Workspace: workspaceName,
-		Kind:      "XApi",
+		Kind:      "Api",
 		Name:      resourceName,
-		Params:    buildGuestParams(workspaceName, wsSlot, resourceName, "XApi", guestImage, fileNames, req.WithCache, req.WithSql),
+		Params:    buildGuestParams(workspaceName, wsSlot, resourceName, "Api", guestImage, fileNames, req.WithCache, req.WithSql),
 	}
 
 	rendered, err := RenderResource(wr)
@@ -823,22 +823,22 @@ func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 }
 
 // generateGuestResourceName returns a name that is unique across the cluster.
-// XRs (XApi, XSpa, XSql, etc.) are cluster-scoped in Crossplane, so names must not
+// XRs (Api, Spa, Sql, etc.) are cluster-scoped in Crossplane, so names must not
 // collide between workspaces. We use "{slug}-{kind-short}" (e.g. "phantom-burrito-api").
-// IAM role names that exceed 64 chars are handled by the hash fallback in the XApi
+// IAM role names that exceed 64 chars are handled by the hash fallback in the Api
 // composition (xp-{sha256}), so slug length is not a concern here.
 // A 2-byte random hex suffix is appended only when a resource with that base name already exists.
 func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (string, error) {
 	slug := strings.TrimPrefix(workspaceName, guestPrefix)
 	kindShortNames := map[string]string{
-		"XApi":           "api",
-		"XSpa":           "spa",
-		"XSql":           "sql",
-		"XNoSql":         "nosql",
-		"XObjectStorage": "store",
-		"XTopic":         "topic",
-		"XSubscription":  "sub",
-		"XWordpress":     "wordpress",
+		"Api":           "api",
+		"Spa":           "spa",
+		"Sql":           "sql",
+		"NoSql":         "nosql",
+		"ObjectStorage": "store",
+		"Topic":         "topic",
+		"Subscription":  "sub",
+		"Wordpress":     "wordpress",
 	}
 	suffix, ok := kindShortNames[kind]
 	if !ok {
