@@ -146,7 +146,9 @@ func TestRenderResource_Api(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"kind: Api", "name: my-api", "image: ghcr.io/foo/bar:1.0"} {
+	// The poll-interval annotation is what keeps AWS binding secrets from waiting
+	// a full minute for Crossplane's next render pass.
+	for _, want := range []string{"kind: Api", "name: my-api", "image: ghcr.io/foo/bar:1.0", `crossplane.io/poll-interval: "5s"`} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in rendered YAML:\n%s", want, yaml)
 		}
