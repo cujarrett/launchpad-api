@@ -186,6 +186,14 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	// Write both files in one atomic commit instead.
 	nsPath := fmt.Sprintf("%s/namespace.yaml", fullName)
 	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
+
+	// The client asks for this workspace's resources while the commit below is still
+	// in flight, and the directory 404s until it lands — a 502 to the browser. A new
+	// workspace has no resources anyway, so seed the answer rather than 502 the wait.
+	a.resourceCacheMu.Lock()
+	a.resourceCache[fullName] = resourceCacheEntry{resources: []resourceJSON{}, at: time.Now()}
+	a.resourceCacheMu.Unlock()
+
 	files := []batchFile{
 		{Path: nsPath, Content: RenderNamespace(fullName)},
 		{Path: metaPath, Content: metaYAML},
