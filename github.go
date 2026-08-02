@@ -65,6 +65,14 @@ func (c *githubClient) listDir(ctx context.Context, path string) ([]ghEntry, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// A workspace directory only exists once a file has been committed into it,
+	// and the contents API lags a commit by a moment. Every caller wants the
+	// same thing from a missing directory as from an empty one, so don't make
+	// them each turn a 404 into a 502 the user has to see.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github API %s: status %d", url, resp.StatusCode)
 	}
