@@ -7,21 +7,29 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* Mirrors the Launchpad design tokens so a sandbox looks like it came from
+       the same product that provisioned it. */
     :root {
-      --bg: #08090d;
-      --surface: #0f1117;
-      --border: rgba(255,255,255,0.07);
-      --muted: #4b5263;
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-alt: #22263a;
+      --border: #2e3347;
+      --muted: #656e85;
       --text: #e2e8f0;
-      --text-dim: #8892a4;
+      --text-dim: #8492a6;
       --green: #22c55e;
-      --red: #f87171;
-      --purple: #a78bfa;
-      --purple-glow: rgba(124,58,237,0.15);
+      --red: #ef4444;
+      --accent: #6366f1;
+      --accent-soft: #c7d2fe;
+      --accent-glow: rgba(99,102,241,0.14);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: var(--font-sans);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -49,9 +57,9 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      color: var(--purple);
-      background: var(--purple-glow);
-      border: 1px solid rgba(124,58,237,0.25);
+      color: var(--accent-soft);
+      background: var(--accent-glow);
+      border: 1px solid rgba(99,102,241,0.35);
       border-radius: 100px;
       padding: 4px 12px;
       margin-bottom: 16px;
@@ -70,7 +78,7 @@
       letter-spacing: -0.03em;
       color: #f8fafc;
       line-height: 1.1;
-      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-family: var(--font-mono);
     }
 
     .hero p {
@@ -107,7 +115,7 @@
       min-width: 0;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       padding: 18px 16px;
       transition: border-color 0.25s, box-shadow 0.25s;
     }
@@ -119,7 +127,7 @@
 
     .card.unavailable,
     .card.error,
-    .card.starting { border-color: rgba(248,113,113,0.3); }
+    .card.starting { border-color: rgba(239,68,68,0.3); }
 
     .card-name {
       font-size: 0.72rem;
@@ -147,7 +155,7 @@
     .card-detail {
       margin-top: 8px;
       font-size: 0.72rem;
-      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-family: var(--font-mono);
       color: var(--text-dim);
       line-height: 1.4;
       word-break: break-word;
@@ -180,7 +188,7 @@
     .api-panel {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       padding: 14px 16px;
       display: flex;
       flex-direction: column;
@@ -201,8 +209,8 @@
 
     .api-panel a {
       font-size: 0.8rem;
-      color: var(--purple);
-      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--accent-soft);
+      font-family: var(--font-mono);
       text-decoration: none;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -223,7 +231,7 @@
     .api-response {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       padding: 14px 16px;
       margin-bottom: 12px;
     }
@@ -239,14 +247,14 @@
     .api-response pre {
       margin: 0;
       font-size: 0.76rem;
-      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-family: var(--font-mono);
       line-height: 1.6;
       overflow-x: auto;
       white-space: pre;
     }
     .json-key  { color: #60a5fa; }
     .json-str  { color: var(--green); }
-    .json-bool { color: var(--purple); }
+    .json-bool { color: var(--accent-soft); }
     .json-null { color: var(--muted); }
     .json-num  { color: #fbbf24; }
 
@@ -254,9 +262,9 @@
     .error-banner {
       width: 100%;
       max-width: 580px;
-      background: rgba(248,113,113,0.07);
-      border: 1px solid rgba(248,113,113,0.25);
-      border-radius: 8px;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: var(--radius-md);
       padding: 12px 16px;
       font-size: 0.85rem;
       color: var(--red);
@@ -273,7 +281,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      background: rgba(15,17,23,0.85);
+      background: rgba(26,29,39,0.88);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border);
@@ -285,13 +293,44 @@
       box-shadow: 0 4px 24px rgba(0,0,0,0.4);
     }
 
-    .built-with a {
-      color: var(--purple);
+    /* Mark and wordmark travel together — the mark means nothing sitting on the
+       far side of a sentence from the name it belongs to. */
+    .built-with-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
       text-decoration: none;
-      font-weight: 600;
+      transition: opacity 0.2s;
     }
 
-    .built-with a:hover { text-decoration: underline; }
+    .built-with-brand:hover { opacity: 0.75; }
+
+    .built-with-brand:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: var(--radius-sm);
+    }
+
+    .built-with-mark {
+      width: 17px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    /* Same treatment as the app nav — mono, lowercase, tonal shift on "pad". */
+    .built-with-word {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .built-with-word b {
+      font-weight: 600;
+      color: var(--accent-soft);
+    }
+
   </style>
 </head>
 <body>
@@ -321,13 +360,36 @@
   </div>
 
   <div class="built-with">
-    🚀 Built in minutes with <a href="https://launchpad.mattjarrett.dev" target="_blank" rel="noopener noreferrer">Launchpad</a>
+    <span>Built in minutes with</span>
+    <a class="built-with-brand" href="https://launchpad.mattjarrett.dev" target="_blank" rel="noopener noreferrer">
+      <svg class="built-with-mark" viewBox="0 0 80 64" aria-hidden="true">
+        <g fill="none" stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M27 10 H14 V54 H27" />
+          <path d="M53 10 H66 V54 H53" />
+        </g>
+        <g fill="#c7d2fe">
+          <path d="M40 16.5 L53.5 32 H26.5 Z" />
+          <rect x="35.5" y="29" width="9" height="22" rx="4.5" />
+        </g>
+      </svg>
+      <span class="built-with-word">launch<b>pad</b></span>
+    </a>
   </div>
 
   <script>
     const hostname = window.location.hostname
     const apiBase = hostname.replace(/^(demo\d+)\./, '$1-api.')
-    const apiURL = `https://${apiBase}/`
+
+    // A local preview has no sandbox hostname to derive the API from, so ?api=
+    // lets you point at a real one. Honoured ONLY when the page itself is served
+    // locally — the response is rendered as markup below, so on a live sandbox
+    // this would hand anyone with a crafted link an injection vector.
+    const localPreview = ['localhost', '127.0.0.1', '[::1]', ''].includes(hostname)
+    const rawOverride = new URLSearchParams(window.location.search).get('api')
+    // http(s) only — the value is also assigned to a link's href, so a
+    // javascript: URL would run on click.
+    const apiOverride = /^https?:\/\//i.test(rawOverride ?? '') ? rawOverride : null
+    const apiURL = localPreview && apiOverride ? apiOverride : `https://${apiBase}/`
 
     // Show the slot slug until the API responds with the real workspace name.
     const slotSlug = hostname.split('.')[0]
@@ -364,7 +426,10 @@
           else if (/^"/.test(match))       cls = 'json-str'
           else if (/true|false/.test(match)) cls = 'json-bool'
           else if (/null/.test(match))      cls = 'json-null'
-          return `<span class="${cls}">${match}</span>`
+          // Escaped because the result goes in via innerHTML. Every value from
+          // the API lands inside a matched token, so escaping the match covers
+          // it; the unmatched remainder is only JSON punctuation.
+          return `<span class="${cls}">${escapeHtml(match)}</span>`
         }
       )
     }
