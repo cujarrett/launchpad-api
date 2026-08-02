@@ -558,6 +558,7 @@ func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Phase string `json:"phase"`
 		Done  bool   `json:"done"`
+		Reset bool   `json:"reset"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -574,12 +575,12 @@ func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
 	// Phase times are best-effort telemetry (elapsed-time-per-stage display),
 	// not something the UI needs to block on, so persist in the background.
 	// A per-workspace lock keeps concurrent phase writes from racing.
-	go a.persistGuestPhase(context.Background(), workspaceName, req.Phase, req.Done)
+	go a.persistGuestPhase(context.Background(), workspaceName, req.Phase, req.Done, req.Reset)
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string, done bool) {
+func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string, done, reset bool) {
 	lk := a.lockGuestMeta(workspaceName)
 	lk.Lock()
 	defer lk.Unlock()
@@ -606,7 +607,13 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	if done {
+	// A commit that produced no resources didn't start the run the user is
+	// watching. Phase times are write-once, so a failed attempt would otherwise
+	// pin the clock to itself and the retry would inherit its start time.
+	if reset {
+		raw.PhaseTimes = nil
+		raw.DoneAt = ""
+	} else if done {
 		if raw.DoneAt == "" {
 			raw.DoneAt = now
 		}
@@ -624,7 +631,11 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 		slog.Warn("record guest phase: serialize metadata", "workspace", workspaceName, "err", err)
 		return
 	}
-	if err := a.gh.upsertFile(ctx, metaPath, "chore: record phase "+phase+" for "+workspaceName, string(updated)); err != nil {
+	msg := "chore: record phase " + phase + " for " + workspaceName
+	if reset {
+		msg = "chore: reset phase times for " + workspaceName
+	}
+	if err := a.gh.upsertFile(ctx, metaPath, msg, string(updated)); err != nil {
 		slog.Warn("record guest phase: upsert", "workspace", workspaceName, "phase", phase, "err", err)
 	}
 }
