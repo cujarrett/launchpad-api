@@ -35,7 +35,7 @@ var (
 // returns the slot string. This avoids the root listDir call in loadGuestWorkspaces
 // which can return a stale CDN-cached response for a brand-new directory.
 func (a *app) validateGuestWorkspace(ctx context.Context, workspaceName string) (string, error) {
-	// Retry a few times before concluding the workspace doesn't exist — GitHub's
+	// Retry a few times before concluding the workspace doesn't exist - GitHub's
 	// Contents API can briefly 404 a file that was written moments ago (the same
 	// read-after-write consistency hiccup handled elsewhere), and this is called
 	// right after workspace creation when that window is most likely to be hit.
@@ -100,7 +100,7 @@ func (a *app) handleListGuestWorkspaces(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, workspaces)
 }
 
-// guestSlots are the fixed DNS slots — each maps to a pre-configured public hostname.
+// guestSlots are the fixed DNS slots - each maps to a pre-configured public hostname.
 // Slots are assigned at workspace creation time and stored in guest.yaml.
 var guestSlots = []string{
 	"demo1",
@@ -123,7 +123,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		Name string `json:"name"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1*1024)
-	_ = json.NewDecoder(r.Body).Decode(&body) // ignore parse errors — name is optional
+	_ = json.NewDecoder(r.Body).Decode(&body) // ignore parse errors - name is optional
 
 	existing, err := a.loadGuestWorkspaces(ctx)
 	if err != nil {
@@ -132,7 +132,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if len(existing) >= guestMaxCount {
-		http.Error(w, fmt.Sprintf("all %d demo slots are in use — try again in a few minutes", guestMaxCount), http.StatusTooManyRequests)
+		http.Error(w, fmt.Sprintf("all %d demo slots are in use - try again in a few minutes", guestMaxCount), http.StatusTooManyRequests)
 		return
 	}
 
@@ -154,15 +154,15 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		if ok && isValidWord(w1) && isValidWord(w2) {
 			candidateFull := guestPrefix + suggested
 			if usedNames[candidateFull] {
-				// Name is valid but already taken — tell the client so it can reroll.
-				http.Error(w, fmt.Sprintf("%q is already in use — try another name", suggested), http.StatusConflict)
+				// Name is valid but already taken - tell the client so it can reroll.
+				http.Error(w, fmt.Sprintf("%q is already in use - try another name", suggested), http.StatusConflict)
 				return
 			}
 			fullName = candidateFull
 		}
 	}
 	if fullName == "" {
-		// No valid suggestion provided — frontend must suggest a name
+		// No valid suggestion provided - frontend must suggest a name
 		http.Error(w, "invalid or missing workspace name", http.StatusBadRequest)
 		return
 	}
@@ -170,7 +170,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	slot, err := pickGuestSlot(usedSlots)
 	if err != nil {
 		slog.Error("create guest workspace: pick slot", "err", err)
-		http.Error(w, fmt.Sprintf("all %d demo slots are in use — try again in a few minutes", guestMaxCount), http.StatusTooManyRequests)
+		http.Error(w, fmt.Sprintf("all %d demo slots are in use - try again in a few minutes", guestMaxCount), http.StatusTooManyRequests)
 		return
 	}
 
@@ -188,7 +188,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
 
 	// The client asks for this workspace's resources while the commit below is still
-	// in flight, and the directory 404s until it lands — a 502 to the browser. A new
+	// in flight, and the directory 404s until it lands - a 502 to the browser. A new
 	// workspace has no resources anyway, so seed the answer rather than 502 the wait.
 	a.resourceCacheMu.Lock()
 	a.resourceCache[fullName] = resourceCacheEntry{resources: []resourceJSON{}, at: time.Now()}
@@ -204,7 +204,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// The namespace itself doesn't exist yet — it was just committed to git and
+	// The namespace itself doesn't exist yet - it was just committed to git and
 	// still needs an ArgoCD sync before the cluster creates it. Retry in the
 	// background instead of racing it on the request path.
 	go a.copyDemoTLSSecretsWhenReady(context.Background(), slot, fullName)
@@ -251,7 +251,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Validating the workspace and listing its files are independent reads —
+	// Validating the workspace and listing its files are independent reads -
 	// run them concurrently instead of paying two round trips back to back.
 	var wsSlot string
 	var validateErr, listErr error
@@ -324,7 +324,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 
 	// Generate a resource name for every planned kind up front, and collect the
 	// full sibling file list (existing + about-to-be-created) so Api's
-	// sqlRef/nosqlRef/objectStorageRefs wiring is correct in a single pass —
+	// sqlRef/nosqlRef/objectStorageRefs wiring is correct in a single pass -
 	// no re-read from GitHub needed between resources.
 	allFileNames := make([]string, 0, len(entries)+len(plan))
 	for _, e := range entries {
@@ -386,11 +386,11 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 }
 
 // buildGuestParams generates all YAML template params for a guest resource.
-// All values are controlled by the server — guests supply only kind.
+// All values are controlled by the server - guests supply only kind.
 // existingFiles is the list of filenames already present in the workspace.
 // withSql wires sqlRef (opt-in); nosqlRef and objectStorageRef are always
 // auto-wired when sibling files exist. topicRef is not wired.
-// slot is the fixed DNS slot (e.g. "demo4") — decoupled from the workspace name.
+// slot is the fixed DNS slot (e.g. "demo4") - decoupled from the workspace name.
 func buildGuestParams(workspace, slot, name, kind, image string, existingFiles []string, withCache, withSql bool) map[string]any {
 	p := map[string]any{
 		"namespace": workspace,
@@ -424,7 +424,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["host"] = fmt.Sprintf("%s.mattjarrett.dev", slot)
 		p["tlsSecret"] = slot + "-tls"
 		// hello-world-spa uses inline <style>/<script> and fetches the companion API
-		// on a different subdomain — relax CSP accordingly.
+		// on a different subdomain - relax CSP accordingly.
 		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"
 	case "Sql":
 		p["backend"] = "private-cloud"
@@ -643,7 +643,7 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 // guestListCacheTTL bounds how stale the guest workspace list (with slots)
 // can be. loadGuestWorkspaces is on the critical path for every workspace
 // creation's capacity/slot check, and is also polled by /metrics and the
-// cleanup loop — caching it keeps a burst of creations from each paying a
+// cleanup loop - caching it keeps a burst of creations from each paying a
 // fresh multi-second GitHub fetch. Held generously long since create/delete
 // invalidate it immediately, so staleness is bounded by actual mutations.
 const guestListCacheTTL = 20 * time.Second
@@ -671,7 +671,7 @@ func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, er
 		}
 	}
 
-	// Fetching each workspace's guest.yaml is an independent GitHub API call —
+	// Fetching each workspace's guest.yaml is an independent GitHub API call -
 	// fan them out concurrently instead of one at a time.
 	entriesOut := make([]*guestWorkspaceJSON, len(dirs))
 	var wg sync.WaitGroup
@@ -718,7 +718,7 @@ func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, er
 		}
 	}
 
-	// Oldest first — used for the cap-exceeded message.
+	// Oldest first - used for the cap-exceeded message.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].CreatedAt < result[j].CreatedAt
 	})
@@ -784,7 +784,7 @@ func (a *app) cleanupExpiredGuests(ctx context.Context) {
 		if expiry == nil {
 			// guest.yaml missing or unreadable. Usually a workspace still mid-creation,
 			// but if this persists across several ticks it's a leftover directory from
-			// a delete that failed partway through — sweep whatever files remain.
+			// a delete that failed partway through - sweep whatever files remain.
 			if misses := a.recordStaleGuestMiss(e.Name); misses >= staleGuestSweepThreshold {
 				slog.Warn("guest cleanup: guest.yaml missing after repeated checks, sweeping leftover files", "workspace", e.Name, "misses", misses)
 				a.deleteGuestWorkspaceFiles(ctx, e.Name)
@@ -803,7 +803,7 @@ func (a *app) cleanupExpiredGuests(ctx context.Context) {
 }
 
 // deleteGuestWorkspaceFiles deletes every file in the guest workspace directory.
-// ArgoCD and Crossplane cascade from there. Each delete is retried a few times —
+// ArgoCD and Crossplane cascade from there. Each delete is retried a few times -
 // GitHub's contents API can briefly 404 the SHA lookup for a file that was just
 // listed, a read-after-write consistency hiccup rather than a real absence.
 func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
@@ -868,7 +868,7 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 	// Check if a file with this base name is already present.
 	for _, e := range existing {
 		if e.Name == base+".yaml" {
-			// Collision — append a 2-byte random hex suffix.
+			// Collision - append a 2-byte random hex suffix.
 			b := make([]byte, 2)
 			if _, err := rand.Read(b); err != nil {
 				return "", err
@@ -881,8 +881,8 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 
 // copyDemoTLSSecretsWhenReady retries copyDemoTLSSecrets until it fully
 // succeeds or the bound elapses. The guest namespace doesn't exist yet when
-// this is first called — it was just committed to git and still needs an
-// ArgoCD sync — so early attempts are expected to fail with "not found"
+// this is first called - it was just committed to git and still needs an
+// ArgoCD sync - so early attempts are expected to fail with "not found"
 // until the namespace shows up. launchpad-api has no RBAC grant to get
 // namespaces directly, so readiness is inferred from the copy itself
 // succeeding rather than a separate existence check.
@@ -946,7 +946,7 @@ func (a *app) copyDemoTLSSecrets(ctx context.Context, slot, targetNamespace stri
 }
 
 // pickGuestSlot returns a random available slot from guestSlots.
-// Slots are independent of workspace names — they own the fixed DNS hostnames.
+// Slots are independent of workspace names - they own the fixed DNS hostnames.
 func pickGuestSlot(used map[string]bool) (string, error) {
 	candidates := make([]string, 0, len(guestSlots))
 	for _, s := range guestSlots {

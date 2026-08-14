@@ -31,7 +31,7 @@ func newAuthMiddleware(ctx context.Context) (*authMiddleware, error) {
 		if os.Getenv("PORT") == "443" {
 			return nil, fmt.Errorf("auth: ENTRA_AUTH_DISABLED=true is not permitted on port 443")
 		}
-		slog.Error("⚠️  AUTH DISABLED — all requests granted Contributor — development only")
+		slog.Error("⚠️  AUTH DISABLED - all requests granted Contributor - development only")
 		return &authMiddleware{disabled: true, tickets: newTicketStore()}, nil
 	}
 
@@ -59,7 +59,7 @@ func newAuthMiddleware(ctx context.Context) (*authMiddleware, error) {
 
 // requireAuth wraps a handler with JWT validation.
 //
-// Read-only policy: GET requests and SSE are publicly accessible — no token
+// Read-only policy: GET requests and SSE are publicly accessible - no token
 // required. If a token IS present on a GET it is still validated so that
 // Contributors receive their roles (write buttons appear in the UI).
 //
@@ -100,13 +100,13 @@ func (a *authMiddleware) requireAuth(next http.Handler) http.Handler {
 
 		raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 
-		// GET with no token — allow as anonymous (no roles, no write access).
+		// GET with no token - allow as anonymous (no roles, no write access).
 		if raw == "" && r.Method == http.MethodGet {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// POST / DELETE / PUT — token is mandatory.
+		// POST / DELETE / PUT - token is mandatory.
 		if raw == "" {
 			http.Error(w, "missing token", http.StatusUnauthorized)
 			return

@@ -43,7 +43,7 @@ func RenderNamespace(name string) string {
 }
 
 // ────────────────────────────────────────────────
-// Templates — one per platform resource kind
+// Templates - one per platform resource kind
 // ────────────────────────────────────────────────
 
 const spaTemplate = `apiVersion: platform.local.lab/v1alpha1
@@ -73,7 +73,7 @@ metadata:
   annotations:
     # AWS binding secrets need a second render pass to pick up the RolesAnywhere
     # profile ARN. Crossplane's 1m default poll made most sandboxes wait a full
-    # extra minute for that pass — this bounds the wait to 5s.
+    # extra minute for that pass - this bounds the wait to 5s.
     crossplane.io/poll-interval: "5s"
 spec:
   parameters:

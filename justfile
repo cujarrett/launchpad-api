@@ -33,7 +33,7 @@ preview-spa workspace port="8765":
         -o jsonpath='{range .items[*]}{.spec.rules[*].host}{"\n"}{end}' 2>/dev/null \
         | grep -- '-api\.' | head -1 || true)
     if [ -z "$api" ]; then
-        echo "No API ingress in {{workspace}}. Sandboxes expire after ~10 minutes — is it still live?" >&2
+        echo "No API ingress in {{workspace}}. Sandboxes expire after ~10 minutes - is it still live?" >&2
         echo "Live now: $(kubectl get ns -o name 2>/dev/null | grep guest- | sed 's|namespace/||' | paste -sd' ' - || echo none)" >&2
         exit 1
     fi

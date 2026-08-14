@@ -2,8 +2,8 @@
 
 Go backend for [Launchpad](https://github.com/cujarrett/launchpad). Two paths, strictly separated:
 
-- **Write** — a form submission commits platform XR YAML to GitHub. ArgoCD syncs it. Crossplane provisions it. This binary never touches the Kubernetes API on the write path.
-- **Read** — a Kubernetes dynamic client watches all platform XR kinds and fans status events out over SSE to every connected browser tab.
+- **Write** - a form submission commits platform XR YAML to GitHub. ArgoCD syncs it. Crossplane provisions it. This binary never touches the Kubernetes API on the write path.
+- **Read** - a Kubernetes dynamic client watches all platform XR kinds and fans status events out over SSE to every connected browser tab.
 
 GitHub is the source of truth. The cluster is the execution engine.
 
@@ -32,16 +32,16 @@ flowchart LR
     r1 --> r2 --> r3
 ```
 
-Stdlib only — no web framework.
+Stdlib only - no web framework.
 
 ## Guest sandbox
 
-Unauthenticated users get a sandbox — a 10-minute real workload against the real cluster. The API:
+Unauthenticated users get a sandbox - a 10-minute real workload against the real cluster. The API:
 
 1. Picks a slot (`demo1`–`demo5`) from a fixed pool to bound AWS resource creation
 2. Picks a random two-word name (`cosmic-anvil`, `golden-llama`)
 3. Commits `namespace.yaml` + XR YAML for each selected resource to GitHub
-4. Returns `{ name, expiresAt }` — the browser polls status over SSE
+4. Returns `{ name, expiresAt }` - the browser polls status over SSE
 
 A cleanup goroutine runs every minute, reads `guest.yaml` from each workspace directory, and deletes expired workspaces by removing their files from GitHub. ArgoCD propagates the deletion.
 
@@ -51,7 +51,7 @@ Guest resources share one SPIRE trust anchor and the same cluster but get isolat
 
 Contributor endpoints require a valid JWT from Azure Entra ID, validated against the JWKS endpoint. Guest endpoints are unauthenticated but capped: 5 active sandboxes, 10 resources each.
 
-`ENTRA_AUTH_DISABLED=true` bypasses JWT validation for local dev — blocked on port 443 in production.
+`ENTRA_AUTH_DISABLED=true` bypasses JWT validation for local dev - blocked on port 443 in production.
 
 ## Local dev
 
@@ -86,7 +86,7 @@ curl http://localhost:8080/healthz
 | `ENTRA_TENANT_ID` | yes | Azure Entra ID tenant GUID |
 | `ENTRA_API_CLIENT_ID` | yes | Client ID of the API app registration |
 | `PORT` | no | HTTP listen port (default `8080`) |
-| `ENTRA_AUTH_DISABLED` | no | `true` to skip JWT validation — blocked on port 443 |
+| `ENTRA_AUTH_DISABLED` | no | `true` to skip JWT validation - blocked on port 443 |
 | `GUEST_IMAGE` | no | Container image for guest API deployments |
 | `GUEST_SPA_IMAGE` | no | Container image for guest SPA deployments |
 
@@ -110,14 +110,14 @@ kubectl rollout restart deployment/launchpad-api -n launchpad
 
 ### Rotating `HOMELAB_PAT`
 
-Separate from `LAUNCHPAD_API` above, and easy to confuse — both are fine-grained PATs with `contents: write` on `cujarrett/homelab-workspaces`. `LAUNCHPAD_API` is a Kubernetes Secret the running binary reads to commit user submissions. `HOMELAB_PAT` is a GitHub Actions secret only CI uses, to commit this repo's own image tag. Rotating one leaves the other alone.
+Separate from `LAUNCHPAD_API` above, and easy to confuse - both are fine-grained PATs with `contents: write` on `cujarrett/homelab-workspaces`. `LAUNCHPAD_API` is a Kubernetes Secret the running binary reads to commit user submissions. `HOMELAB_PAT` is a GitHub Actions secret only CI uses, to commit this repo's own image tag. Rotating one leaves the other alone.
 
 When `HOMELAB_PAT` expires, `deploy` fails on `Bad credentials (HTTP 401)` while `test` and `build-and-push` stay green. Images keep building and the cluster keeps running the old tag, so nothing looks broken until someone checks what is actually deployed.
 
 ```bash
 # 1. Mint a replacement at https://github.com/settings/personal-access-tokens
-#    Repository access — cujarrett/homelab-workspaces only
-#    Permissions — Contents: Read and write
+#    Repository access - cujarrett/homelab-workspaces only
+#    Permissions - Contents: Read and write
 
 # 2. Replace the secret
 print -n "Paste new token: "

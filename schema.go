@@ -107,7 +107,7 @@ func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine kind from the broadcaster cache — it already has every known XR.
+	// Determine kind from the broadcaster cache - it already has every known XR.
 	a.bcast.mu.RLock()
 	cacheKey := ""
 	var kind string
@@ -183,7 +183,7 @@ func findResourceParams(ctx context.Context, client dynamic.Interface, tenant, n
 			continue
 		}
 		t, _, _ := unstructured.NestedString(obj.Object, "spec", "parameters", "namespace")
-		// t == "" means this kind has no namespace param (e.g. Topic, Subscription) — accept the match.
+		// t == "" means this kind has no namespace param (e.g. Topic, Subscription) - accept the match.
 		if t != "" && t != tenant {
 			continue
 		}

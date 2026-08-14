@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// ticketTTL is deliberately short — a ticket only needs to survive the moment
+// ticketTTL is deliberately short - a ticket only needs to survive the moment
 // between being minted and the browser opening the EventSource connection.
 const ticketTTL = 30 * time.Second
 
@@ -46,7 +46,7 @@ func (s *ticketStore) mint(roles []string) (string, error) {
 	return ticket, nil
 }
 
-// redeem consumes a ticket — each ticket is valid for exactly one lookup.
+// redeem consumes a ticket - each ticket is valid for exactly one lookup.
 func (s *ticketStore) redeem(ticket string) ([]string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

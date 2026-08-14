@@ -48,7 +48,7 @@ func (b *broadcaster) publish(s ResourceStatus) {
 	for ch := range b.clients {
 		select {
 		case ch <- s:
-		default: // slow client — drop
+		default: // slow client - drop
 		}
 	}
 	b.mu.Unlock()

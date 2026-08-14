@@ -32,10 +32,10 @@ import (
 
 // integrationStatus is the per-backend result the SPA renders as a card.
 //
-//	ok             — round-trip (or presence check) succeeded
-//	starting       — binding present, backend not reachable yet (retryable)
-//	error          — binding present, round-trip failed
-//	not_configured — no binding mounted; the card is hidden by the SPA
+//	ok             - round-trip (or presence check) succeeded
+//	starting       - binding present, backend not reachable yet (retryable)
+//	error          - binding present, round-trip failed
+//	not_configured - no binding mounted; the card is hidden by the SPA
 type integrationStatus struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
@@ -383,7 +383,7 @@ func regionFromHost(host string) string {
 	return "us-east-1"
 }
 
-// probePostgresIAM handles public-cloud sql bindings (RDS IAM auth — no
+// probePostgresIAM handles public-cloud sql bindings (RDS IAM auth - no
 // password in the binding). It verifies the workload identity chain end to
 // end: STS credentials from the sidecar, then an RDS auth token. The RDS
 // endpoint is VPC-internal and normally unreachable from this cluster, so a
@@ -548,7 +548,7 @@ func publishableSubject(subjects []string) string {
 	return strings.Join(tokens, ".")
 }
 
-// probeTopic publishes a message to the bound stream — proves the stream
+// probeTopic publishes a message to the bound stream - proves the stream
 // exists and accepts writes.
 func (a *app) probeTopic(ctx context.Context) integrationStatus {
 	const name = "Topic"

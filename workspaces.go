@@ -135,7 +135,7 @@ func excludedWorkspaces() map[string]bool {
 // listing can be for guest workspaces. Fetching each resource file is a
 // separate GitHub API call, so without a cache repeated page loads/polls
 // re-pay that latency in full. Kept short because guests actively create and
-// delete resources through the UI and expect that to show up promptly — this
+// delete resources through the UI and expect that to show up promptly - this
 // cache has no active invalidation hook (unlike wsCache/guestListCache), so
 // TTL is the only thing bounding staleness here.
 const resourcesCacheTTL = 3 * time.Second
@@ -143,7 +143,7 @@ const resourcesCacheTTL = 3 * time.Second
 // nonGuestResourcesCacheTTL applies to hand-maintained workspaces (everything
 // not prefixed guest-). Those are committed directly to homelab-workspaces
 // outside launchpad-api entirely, so there's no create/delete event to react
-// to either way — a much longer TTL just means fewer repeat GitHub calls for
+// to either way - a much longer TTL just means fewer repeat GitHub calls for
 // data that in practice changes on the order of days, not seconds.
 const nonGuestResourcesCacheTTL = 5 * time.Minute
 
@@ -187,7 +187,7 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 		files = append(files, e)
 	}
 
-	// Fetch file contents in parallel — each is a separate GitHub API call,
+	// Fetch file contents in parallel - each is a separate GitHub API call,
 	// and doing them serially made this endpoint take seconds per workspace.
 	parsed := make([]*resourceJSON, len(files))
 	var wg sync.WaitGroup

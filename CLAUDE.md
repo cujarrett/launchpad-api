@@ -3,15 +3,15 @@
 ## Rules
 
 - **Never run `git commit`, `git push`, or any git command that writes to or modifies repository history or remotes.** If a task requires committing or pushing, stop and tell the user to run the git command manually.
-- Do not add external dependencies — stdlib only.
-- Do not use global variables — put state on the `app` struct.
-- Do not call `os.Getenv` inside handlers — read config once in `main()`.
+- Do not add external dependencies - stdlib only.
+- Do not use global variables - put state on the `app` struct.
+- Do not call `os.Getenv` inside handlers - read config once in `main()`.
 - Keep all application code in `main.go` and all tests in `main_test.go` unless the file grows large enough to warrant splitting.
-- **Never include environment variable values, file contents, or internal paths in HTTP responses.** This includes error messages, debug output, and structured error bodies. launchpad-api runs with AWS credentials injected at `/aws-credentials/credentials` — any response that leaks file system contents or env var values is a credential exposure to public guests at `launchpad.mattjarrett.dev`.
+- **Never include environment variable values, file contents, or internal paths in HTTP responses.** This includes error messages, debug output, and structured error bodies. launchpad-api runs with AWS credentials injected at `/aws-credentials/credentials` - any response that leaks file system contents or env var values is a credential exposure to public guests at `launchpad.mattjarrett.dev`.
 
 ### Pre-commit safety check
 
-Before telling the user to commit, always run `/security-review`. It reviews the pending changes on the current branch for security issues. Once it confirms the changes are safe, offer the user a suggested commit message — do not run `git commit` yourself.
+Before telling the user to commit, always run `/security-review`. It reviews the pending changes on the current branch for security issues. Once it confirms the changes are safe, offer the user a suggested commit message - do not run `git commit` yourself.
 
 ## Project Overview
 
@@ -19,14 +19,14 @@ launchpad-api is the Go backend-for-frontend for the Launchpad UI. It reads and 
 
 ## Tech Stack
 
-- **Language**: Go 1.26, stdlib only — no external dependencies
+- **Language**: Go 1.26, stdlib only - no external dependencies
 - **Container**: Multi-stage Dockerfile, `linux/arm64`, non-root user
 - **CI/CD**: GitHub Actions → GHCR (`ghcr.io/cujarrett/launchpad-api`)
 - **Deployment**: Kubernetes via homelab Api Crossplane XR
 
 ## Project Structure
 
-All application code lives in the repo root — no subdirectories.
+All application code lives in the repo root - no subdirectories.
 
 | File | Purpose |
 |---|---|
@@ -36,7 +36,7 @@ All application code lives in the repo root — no subdirectories.
 | `workspaces.go` | `GET /api/workspaces` and `GET /api/workspaces/{name}/resources` handlers |
 | `write.go` | `POST` and `DELETE` workspace/resource handlers |
 | `render.go` | YAML rendering from schema + user params |
-| `schema.go` | `GET /api/schema/{kind}` handler — returns JSON schema for a resource kind |
+| `schema.go` | `GET /api/schema/{kind}` handler - returns JSON schema for a resource kind |
 | `watcher.go` | Kubernetes dynamic client watch loop, feeds the broadcaster |
 | `broadcaster.go` | Fan-out SSE broadcaster for `GET /api/status/watch` |
 | `validate.go` | Input validation for write requests |
@@ -75,23 +75,23 @@ The API is a thin stateless layer between the Launchpad SPA, GitHub, and Kuberne
 | `PORT` | no | HTTP listen port (default `8080`) |
 | `GITHUB_OWNER` | no | GitHub org/user for the workspaces repo (default `cujarrett`) |
 | `GITHUB_REPO` | no | GitHub repo name for the workspaces repo (default `homelab-workspaces`) |
-| `ENTRA_AUTH_DISABLED` | no | Set to `true` to skip JWT validation in local dev — **never on port 443** |
+| `ENTRA_AUTH_DISABLED` | no | Set to `true` to skip JWT validation in local dev - **never on port 443** |
 
 ## Coding Conventions
 
-- Stdlib only — do not add external dependencies to `go.mod`
-- No package-level globals — all state lives on the `app` struct
+- Stdlib only - do not add external dependencies to `go.mod`
+- No package-level globals - all state lives on the `app` struct
 - Read config once at startup, not per-request
 - Fail fast: use `log.Fatal` at startup for missing required config
-- `defer func() { _ = resp.Body.Close() }()` — explicit discard for `errcheck`
-- All tests use `httptest.NewServer` / `httptest.NewRecorder` — no real network calls, no env var dependencies
+- `defer func() { _ = resp.Body.Close() }()` - explicit discard for `errcheck`
+- All tests use `httptest.NewServer` / `httptest.NewRecorder` - no real network calls, no env var dependencies
 
 ## Local Development
 
 ```bash
 # 1. Copy and review the example env file
 cp .env.example .env
-# LAUNCHPAD_API comes from ~/.secrets — source it or set it manually
+# LAUNCHPAD_API comes from ~/.secrets - source it or set it manually
 # Set ENTRA_AUTH_DISABLED=true to skip Entra auth locally
 
 # 2. Run
@@ -106,8 +106,8 @@ Run `just ci` before pushing to catch lint and test failures early.
 
 ## CI/CD
 
-- **`test` job**: runs on all pushes and PRs — `go test ./...` then `go vet ./...`
-- **`build-and-push` job**: runs on `main` only after `test` passes — builds ARM64 Docker image and pushes to GHCR with `:main` and `:sha-<sha>` tags
+- **`test` job**: runs on all pushes and PRs - `go test ./...` then `go vet ./...`
+- **`build-and-push` job**: runs on `main` only after `test` passes - builds ARM64 Docker image and pushes to GHCR with `:main` and `:sha-<sha>` tags
 
 ## Version
 
@@ -115,7 +115,7 @@ Set at build time via `-ldflags="-X main.version=x.y.z"` in the Dockerfile. Defa
 
 ## Philosophy: Grug-Brained Development
 
-> "Complexity very, very bad." — [grugbrain.dev](https://grugbrain.dev/)
+> "Complexity very, very bad." - [grugbrain.dev](https://grugbrain.dev/)
 
 - **Say no.** The best weapon against complexity is the word "no". No new feature, no new abstraction, until it earns its place.
 - **No abstraction until a pattern repeats three times.** Let cut points emerge naturally from the code; don't invent them up front.

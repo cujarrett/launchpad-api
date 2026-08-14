@@ -155,9 +155,9 @@ func watchResource(ctx context.Context, client dynamic.Interface, b *broadcaster
 
 // extractStatus pulls Crossplane conditions from an XR object.
 // Workspace resolution order:
-//  1. spec.parameters.namespace  — set by most XRs (Spa, Api, etc.)
-//  2. metadata.namespace         — set for namespaced XRs (Wordpress)
-//  3. argocd tracking annotation — set for cluster-scoped XRs with no namespace
+//  1. spec.parameters.namespace  - set by most XRs (Spa, Api, etc.)
+//  2. metadata.namespace         - set for namespaced XRs (Wordpress)
+//  3. argocd tracking annotation - set for cluster-scoped XRs with no namespace
 //     param (Topic, Subscription): "app:group/Kind:namespace/name"
 func extractStatus(obj *unstructured.Unstructured, kind string) *ResourceStatus {
 	workspace, _, _ := unstructured.NestedString(obj.Object, "spec", "parameters", "namespace")

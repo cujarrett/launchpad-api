@@ -293,7 +293,7 @@
       box-shadow: 0 4px 24px rgba(0,0,0,0.4);
     }
 
-    /* Mark and wordmark travel together — the mark means nothing sitting on the
+    /* Mark and wordmark travel together - the mark means nothing sitting on the
        far side of a sentence from the name it belongs to. */
     .built-with-brand {
       display: inline-flex;
@@ -317,7 +317,7 @@
       flex-shrink: 0;
     }
 
-    /* Same treatment as the app nav — mono, lowercase, tonal shift on "pad". */
+    /* Same treatment as the app nav - mono, lowercase, tonal shift on "pad". */
     .built-with-word {
       font-family: var(--font-mono);
       font-size: 0.85rem;
@@ -382,11 +382,11 @@
 
     // A local preview has no sandbox hostname to derive the API from, so ?api=
     // lets you point at a real one. Honoured ONLY when the page itself is served
-    // locally — the response is rendered as markup below, so on a live sandbox
+    // locally - the response is rendered as markup below, so on a live sandbox
     // this would hand anyone with a crafted link an injection vector.
     const localPreview = ['localhost', '127.0.0.1', '[::1]', ''].includes(hostname)
     const rawOverride = new URLSearchParams(window.location.search).get('api')
-    // http(s) only — the value is also assigned to a link's href, so a
+    // http(s) only - the value is also assigned to a link's href, so a
     // javascript: URL would run on click.
     const apiOverride = /^https?:\/\//i.test(rawOverride ?? '') ? rawOverride : null
     const apiURL = localPreview && apiOverride ? apiOverride : `https://${apiBase}/`
@@ -403,7 +403,7 @@
       workspaceKnown = true
       const name = raw.replace(/^guest-/, '')
       document.getElementById('workspace-name').textContent = name
-      // Key the launched timestamp to this workspace, not the slot —
+      // Key the launched timestamp to this workspace, not the slot -
       // so a recycled slot doesn't show a stale date from a previous occupant.
       const tsKey = 'launched:' + name
       if (!localStorage.getItem(tsKey)) localStorage.setItem(tsKey, Date.now())

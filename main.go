@@ -133,7 +133,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("GET /metrics", a.handleMetrics)
-	// Guest endpoints — no auth required; registered before the catch-all.
+	// Guest endpoints - no auth required; registered before the catch-all.
 	mux.HandleFunc("GET /api/guest/workspaces", a.handleListGuestWorkspaces)
 	mux.HandleFunc("POST /api/guest/workspaces", a.handleCreateGuestWorkspace)
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources/batch", a.handleCreateGuestResourceBatch)
@@ -273,7 +273,7 @@ func (a *app) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 
 // handleIssueSSETicket exchanges the caller's real Bearer token (already
 // validated by requireAuth) for a short-lived, single-use ticket that the
-// frontend can safely put in the /api/status/watch URL — EventSource has no
+// frontend can safely put in the /api/status/watch URL - EventSource has no
 // way to send an Authorization header, so this avoids ever logging or
 // exposing the real token in a URL.
 func (a *app) handleIssueSSETicket(w http.ResponseWriter, r *http.Request) {
