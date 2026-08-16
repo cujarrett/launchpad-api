@@ -242,3 +242,19 @@ func TestRenderNamespace(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderGuestNamespace(t *testing.T) {
+	out := RenderGuestNamespace("guest-phantom-burrito", "demo3")
+
+	for _, want := range []string{
+		"name: guest-phantom-burrito",
+		"launchpad.local.lab/slot: demo3",
+		"kind: RoleBinding",
+		"name: secret-mirror-writer",
+		"namespace: guest-phantom-burrito",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}

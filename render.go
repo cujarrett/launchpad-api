@@ -42,6 +42,39 @@ func RenderNamespace(name string) string {
 	return fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n  annotations:\n    linkerd.io/inject: enabled\n", name)
 }
 
+// RenderGuestNamespace renders a guest sandbox namespace plus the RoleBinding
+// that lets secret-mirror-controller manage TLS Secrets inside it.
+//
+// The slot label is what the controller selects on - guests name their own
+// workspaces, so there is no pattern to match. The RoleBinding is namespaced on
+// purpose: the controller holds no cluster-wide Secret access, and instead
+// receives it here when the sandbox is created and loses it when it is deleted.
+func RenderGuestNamespace(name, slot string) string {
+	return fmt.Sprintf(`apiVersion: v1
+kind: Namespace
+metadata:
+  name: %[1]s
+  labels:
+    launchpad.local.lab/slot: %[2]s
+  annotations:
+    linkerd.io/inject: enabled
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: secret-mirror-writer
+  namespace: %[1]s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: secret-mirror-writer
+subjects:
+  - kind: ServiceAccount
+    name: secret-mirror-controller
+    namespace: secret-mirror-controller
+`, name, slot)
+}
+
 // ────────────────────────────────────────────────
 // Templates - one per platform resource kind
 // ────────────────────────────────────────────────

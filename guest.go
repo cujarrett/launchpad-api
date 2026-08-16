@@ -195,7 +195,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	a.resourceCacheMu.Unlock()
 
 	files := []batchFile{
-		{Path: nsPath, Content: RenderNamespace(fullName)},
+		{Path: nsPath, Content: RenderGuestNamespace(fullName, slot)},
 		{Path: metaPath, Content: metaYAML},
 	}
 	if err := a.gh.upsertFilesAtomic(ctx, files, "feat: create guest workspace "+fullName); err != nil {
