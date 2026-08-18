@@ -110,23 +110,8 @@ kubectl rollout restart deployment/launchpad-api -n launchpad
 
 ### Rotating `HOMELAB_PAT`
 
-Separate from `LAUNCHPAD_API` above, and easy to confuse - both are fine-grained PATs with `contents: write` on `cujarrett/homelab-workspaces`. `LAUNCHPAD_API` is a Kubernetes Secret the running binary reads to commit user submissions. `HOMELAB_PAT` is a GitHub Actions secret only CI uses, to commit this repo's own image tag. Rotating one leaves the other alone.
-
-When `HOMELAB_PAT` expires, `deploy` fails on `Bad credentials (HTTP 401)` while `test` and `build-and-push` stay green. Images keep building and the cluster keeps running the old tag, so nothing looks broken until someone checks what is actually deployed.
-
-```bash
-# 1. Mint a replacement at https://github.com/settings/personal-access-tokens
-#    Repository access - cujarrett/homelab-workspaces only
-#    Permissions - Contents: Read and write
-
-# 2. Replace the secret
-print -n "Paste new token: "
-read -rs NEW_TOKEN
-echo
-gh secret set HOMELAB_PAT --repo cujarrett/launchpad-api --body "$NEW_TOKEN"
-unset NEW_TOKEN
-
-# 3. Revoke the old token, then confirm the next merge to main still deploys
-gh run watch --repo cujarrett/launchpad-api \
-  "$(gh run list --repo cujarrett/launchpad-api --branch main --limit 1 --json databaseId --jq '.[0].databaseId')"
-```
+Separate from `LAUNCHPAD_API` above, and easy to confuse. `LAUNCHPAD_API` is a Kubernetes Secret
+the running binary reads to commit user submissions. `HOMELAB_PAT` is a GitHub Actions secret only
+CI uses, shared across all `homelab-workspaces`-deploying repos and rotated centrally - see
+[GitHub Tokens](https://github.com/cujarrett/homelab/blob/main/docs/github-tokens.md) in the
+homelab repo. Rotating one leaves the other alone.
