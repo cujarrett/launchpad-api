@@ -83,9 +83,9 @@ const spaTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Spa
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
-    namespace: {{ .Params.namespace }}
     image: {{ .Params.image }}
     host: {{ .Params.host }}
 {{- if .Params.tlsSecret }}
@@ -103,6 +103,7 @@ const apiTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Api
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
   annotations:
     # AWS binding secrets need a second render pass to pick up the RolesAnywhere
     # profile ARN. Crossplane's 1m default poll made most sandboxes wait a full
@@ -110,7 +111,6 @@ metadata:
     crossplane.io/poll-interval: "5s"
 spec:
   parameters:
-    namespace: {{ .Params.namespace }}
     image: {{ .Params.image }}
     port: {{ or .Params.port 8080 }}
     replicas: {{ or .Params.replicas 1 }}
@@ -161,9 +161,9 @@ const sqlTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Sql
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
-    namespace: {{ .Params.namespace }}
     backend: {{ or .Params.backend "private-cloud" }}
     dataRetention: {{ or .Params.dataRetention "delete" }}
 {{- if .Params.size }}
@@ -181,9 +181,9 @@ const nosqlTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: NoSql
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
-    namespace: {{ .Params.namespace }}
     dataRetention: {{ or .Params.dataRetention "delete" }}
 {{- if .Params.region }}
     region: {{ .Params.region }}
@@ -200,9 +200,9 @@ const objectstorageTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: ObjectStorage
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
-    namespace: {{ .Params.namespace }}
     dataRetention: {{ or .Params.dataRetention "delete" }}
 {{- if .Params.region }}
     region: {{ .Params.region }}
@@ -213,6 +213,7 @@ const topicTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Topic
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
     streamName: {{ .Params.streamName }}
@@ -229,6 +230,7 @@ const subscriptionTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Subscription
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
     topicRef:
@@ -245,9 +247,9 @@ const wordpressTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Wordpress
 metadata:
   name: {{ .Name }}
+  namespace: {{ .Params.namespace }}
 spec:
   parameters:
-    namespace: {{ .Params.namespace }}
     host: {{ .Params.host }}
     dataRetention: {{ or .Params.dataRetention "retain" }}
     size: {{ or .Params.size "sm" }}
