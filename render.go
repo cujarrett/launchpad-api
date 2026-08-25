@@ -37,18 +37,21 @@ func RenderResource(r writeRequest) (string, error) {
 	return buf.String(), nil
 }
 
-// RenderNamespace renders a namespace manifest.
+// RenderNamespace renders a namespace manifest. The sync-wave puts the Namespace
+// in the last prune wave, because a namespace that starts terminating while
+// managed resources still hold finalizers deadlocks and never finishes.
 func RenderNamespace(name string) string {
-	return fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n  annotations:\n    linkerd.io/inject: enabled\n", name)
+	return fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n  annotations:\n    linkerd.io/inject: enabled\n    argocd.argoproj.io/sync-wave: \"-1\"\n", name)
 }
 
-// RenderGuestNamespace renders a guest sandbox namespace plus the RoleBinding
-// that lets secret-mirror-controller manage TLS Secrets inside it.
+// RenderGuestNamespace renders a guest sandbox namespace.
 //
-// The slot label is what the controller selects on - guests name their own
-// workspaces, so there is no pattern to match. The RoleBinding is namespaced on
-// purpose: the controller holds no cluster-wide Secret access, and instead
-// receives it here when the sandbox is created and loses it when it is deleted.
+// The slot label is what secret-mirror-controller selects on - guests name their
+// own workspaces, so there is no pattern to match.
+//
+// The sync-wave puts the Namespace in the last prune wave. A namespace that
+// starts terminating while managed resources still hold finalizers deadlocks,
+// because the provider cannot recreate its ProviderConfigUsage there.
 func RenderGuestNamespace(name, slot string) string {
 	return fmt.Sprintf(`apiVersion: v1
 kind: Namespace
@@ -58,8 +61,18 @@ metadata:
     launchpad.local.lab/slot: %[2]s
   annotations:
     linkerd.io/inject: enabled
----
-apiVersion: rbac.authorization.k8s.io/v1
+    argocd.argoproj.io/sync-wave: "-1"
+`, name, slot)
+}
+
+// RenderGuestRBAC renders the RoleBinding that lets secret-mirror-controller
+// manage TLS Secrets inside a guest sandbox.
+//
+// secret-mirror-writer is full CRUD on Secrets, so it is bound per namespace
+// rather than cluster-wide: the controller gains it when a sandbox is created
+// and loses it when the sandbox is deleted.
+func RenderGuestRBAC(name string) string {
+	return fmt.Sprintf(`apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: secret-mirror-writer
@@ -72,7 +85,7 @@ subjects:
   - kind: ServiceAccount
     name: secret-mirror-controller
     namespace: secret-mirror-controller
-`, name, slot)
+`, name)
 }
 
 // ────────────────────────────────────────────────

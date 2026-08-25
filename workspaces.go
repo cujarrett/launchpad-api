@@ -20,6 +20,17 @@ import (
 
 var validWorkspaceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$`)
 
+// isInfraFile reports whether a workspace file is scaffolding rather than a
+// platform resource the user created. Resource counts and listings subtract
+// these, so a new scaffolding file has to be added here too.
+func isInfraFile(name string) bool {
+	switch name {
+	case "namespace.yaml", "rbac.yaml", "guest.yaml":
+		return true
+	}
+	return false
+}
+
 type workspaceJSON struct {
 	Name       string            `json:"name"`
 	IsGuest    bool              `json:"isGuest"`
@@ -181,7 +192,7 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 
 	var files []ghEntry
 	for _, e := range entries {
-		if e.Type != "file" || !strings.HasSuffix(e.Name, ".yaml") || e.Name == "namespace.yaml" {
+		if e.Type != "file" || !strings.HasSuffix(e.Name, ".yaml") || isInfraFile(e.Name) {
 			continue
 		}
 		files = append(files, e)
@@ -295,6 +306,9 @@ func (a *app) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, e := range entries {
+		// Deliberately not isInfraFile: this path removes namespace.yaml alone, so
+		// any other file left behind would be orphaned. Guest workspaces carry
+		// rbac.yaml and guest.yaml and are torn down by the guest cleanup instead.
 		if e.Type == "file" && e.Name != "namespace.yaml" {
 			http.Error(w, "workspace is not empty", http.StatusConflict)
 			return

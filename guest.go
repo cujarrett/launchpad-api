@@ -182,6 +182,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	// on the branch tip and one can 409 (see upsertFilesAtomic's doc comment).
 	// Write both files in one atomic commit instead.
 	nsPath := fmt.Sprintf("%s/namespace.yaml", fullName)
+	rbacPath := fmt.Sprintf("%s/rbac.yaml", fullName)
 	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
 
 	// The client asks for this workspace's resources while the commit below is still
@@ -193,6 +194,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 
 	files := []batchFile{
 		{Path: nsPath, Content: RenderGuestNamespace(fullName, slot)},
+		{Path: rbacPath, Content: RenderGuestRBAC(fullName)},
 		{Path: metaPath, Content: metaYAML},
 	}
 	if err := a.gh.upsertFilesAtomic(ctx, files, "feat: create guest workspace "+fullName); err != nil {
@@ -284,7 +286,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	}
 	resourceCount := 0
 	for _, e := range entries {
-		if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
+		if !isInfraFile(e.Name) {
 			resourceCount++
 		}
 	}
@@ -930,7 +932,7 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, e := range entries {
-				if e.Name != "namespace.yaml" && e.Name != "guest.yaml" {
+				if !isInfraFile(e.Name) {
 					counts[idx]++
 				}
 			}

@@ -236,7 +236,9 @@ func TestRenderResource_UnknownKind(t *testing.T) {
 
 func TestRenderNamespace(t *testing.T) {
 	yaml := RenderNamespace("my-workspace")
-	for _, want := range []string{"kind: Namespace", "name: my-workspace"} {
+	// The sync-wave is what keeps namespace teardown from deadlocking on
+	// managed-resource finalizers, so assert it rather than trust it.
+	for _, want := range []string{"kind: Namespace", "name: my-workspace", `argocd.argoproj.io/sync-wave: "-1"`} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in namespace YAML:\n%s", want, yaml)
 		}
@@ -249,6 +251,21 @@ func TestRenderGuestNamespace(t *testing.T) {
 	for _, want := range []string{
 		"name: guest-phantom-burrito",
 		"launchpad.local.lab/slot: demo3",
+		`argocd.argoproj.io/sync-wave: "-1"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "kind: RoleBinding") {
+		t.Errorf("RoleBinding belongs in rbac.yaml, not namespace.yaml:\n%s", out)
+	}
+}
+
+func TestRenderGuestRBAC(t *testing.T) {
+	out := RenderGuestRBAC("guest-phantom-burrito")
+
+	for _, want := range []string{
 		"kind: RoleBinding",
 		"name: secret-mirror-writer",
 		"namespace: guest-phantom-burrito",
