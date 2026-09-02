@@ -138,7 +138,7 @@ func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 
 	plural := kindToPlural[kind]
 	gvr := schema.GroupVersionResource{Group: xrGroup, Version: xrVersion, Resource: plural}
-	obj, err := xrClient(a.dynClient, gvr, kind, tenant).Get(ctx, resource, metav1.GetOptions{})
+	obj, err := xrClient(a.dynClient, gvr, tenant).Get(ctx, resource, metav1.GetOptions{})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("not found: %v", err), http.StatusNotFound)
 		return
@@ -161,24 +161,16 @@ var kindToPlural = map[string]string{
 	"Wordpress":     "wordpresses",
 }
 
-// namespacedKinds lists XR kinds whose CRD scope is Namespaced.
-// All others are Cluster-scoped and do not require a namespace in Get calls.
-var namespacedKinds = map[string]bool{
-	"Wordpress": true,
-}
-
-func xrClient(client dynamic.Interface, gvr schema.GroupVersionResource, kind, namespace string) dynamic.ResourceInterface {
-	if namespacedKinds[kind] {
-		return client.Resource(gvr).Namespace(namespace)
-	}
-	return client.Resource(gvr)
+// Every platform XRD is Namespaced, so all XR Get calls need a namespace.
+func xrClient(client dynamic.Interface, gvr schema.GroupVersionResource, namespace string) dynamic.ResourceInterface {
+	return client.Resource(gvr).Namespace(namespace)
 }
 
 // findResourceParams scans all known XR plurals to locate a resource by name+namespace.
 func findResourceParams(ctx context.Context, client dynamic.Interface, tenant, name string) (map[string]any, bool) {
 	for _, res := range watchedResources {
 		gvr := schema.GroupVersionResource{Group: xrGroup, Version: xrVersion, Resource: res.plural}
-		obj, err := xrClient(client, gvr, res.kind, tenant).Get(ctx, name, metav1.GetOptions{})
+		obj, err := xrClient(client, gvr, tenant).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			continue
 		}
