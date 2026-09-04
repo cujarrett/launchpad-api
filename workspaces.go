@@ -212,13 +212,23 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			var m xrManifest
-			if err := yaml.Unmarshal(content, &m); err != nil {
+			// apiVersion alone first. A full unmarshal of a non-XR file can fail with a
+			// type error that quotes the offending value, so anything committed here
+			// that is not ours never reaches a decoder that could log its contents.
+			var head struct {
+				APIVersion string `yaml:"apiVersion"`
+			}
+			if err := yaml.Unmarshal(content, &head); err != nil {
 				slog.Warn("parse yaml", "path", entry.Path, "err", err)
 				return
 			}
+			if !strings.HasPrefix(head.APIVersion, "platform.local.lab") {
+				return
+			}
 
-			if !strings.HasPrefix(m.APIVersion, "platform.local.lab") {
+			var m xrManifest
+			if err := yaml.Unmarshal(content, &m); err != nil {
+				slog.Warn("parse xr", "path", entry.Path, "err", err)
 				return
 			}
 
