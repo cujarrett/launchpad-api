@@ -187,7 +187,7 @@ The six probes:
 - **SQL Database** (`/bindings/sql/`) - private-cloud bindings (a `password` key) do a create/insert/count round-trip on Postgres. Public-cloud bindings (a `role-arn` key, RDS IAM auth) verify STS credentials via the `sql` profile, generate an RDS auth token, and attempt a short connect - the endpoint is VPC-internal, so a timeout still reports `ok` with an identity-verified detail.
 - **Cache** (`/bindings/cache/`) - private-cloud does an INCR round-trip on Redis. Public-cloud (ElastiCache, always VPC-internal) verifies STS credentials via the `cache` profile and attempts a short TLS connect.
 - **NoSQL Database** (`/bindings/nosql/`) - PutItem → GetItem → DeleteItem on the DynamoDB table using the `nosql` credentials profile.
-- **Object Storage** (`/bindings/object-storage/`, `/bindings/object-storage-1/`, …) - PutObject → GetObject → DeleteObject in every bound bucket, one credentials profile per mount.
+- **Object Storage** (`/bindings/object-storage-<ref-name>/`) - PutObject → GetObject → DeleteObject in every bound bucket, one credentials profile per mount.
 - **Topic** (gated on `NATS_STREAM` env) - publishes a message to the bound JetStream stream.
 - **Subscription** (gated on `NATS_CONSUMER` env) - publishes a uniquely-tagged message, then pull-fetches through the durable consumer until it arrives: a full stream → cursor → delivery round-trip.
 

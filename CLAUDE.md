@@ -69,7 +69,8 @@ The API is a thin stateless layer between the Launchpad SPA, GitHub, and Kuberne
 
 | Variable | Required | Description |
 |---|---|---|
-| `LAUNCHPAD_API` | yes | GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces` |
+| `GITHUB_TOKEN` | in local dev | GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces`. In the cluster the PAT is a mounted file instead. |
+| `GITHUB_TOKEN_FILE` | no | Path to the mounted PAT (default `/secrets/launchpad-github-token/GITHUB_TOKEN`) |
 | `ENTRA_TENANT_ID` | yes | Azure Entra ID tenant GUID |
 | `ENTRA_API_CLIENT_ID` | yes | Client ID of the API app registration (used as JWT audience) |
 | `PORT` | no | HTTP listen port (default `8080`) |
@@ -81,7 +82,7 @@ The API is a thin stateless layer between the Launchpad SPA, GitHub, and Kuberne
 
 - Stdlib only - do not add external dependencies to `go.mod`
 - No package-level globals - all state lives on the `app` struct
-- Read config once at startup, not per-request
+- Read config once at startup, not per-request. The GitHub PAT is the exception: it is read from its mounted file on each call so a rotation needs no restart.
 - Fail fast: use `log.Fatal` at startup for missing required config
 - `defer func() { _ = resp.Body.Close() }()` - explicit discard for `errcheck`
 - All tests use `httptest.NewServer` / `httptest.NewRecorder` - no real network calls, no env var dependencies
@@ -91,7 +92,7 @@ The API is a thin stateless layer between the Launchpad SPA, GitHub, and Kuberne
 ```bash
 # 1. Copy and review the example env file
 cp .env.example .env
-# LAUNCHPAD_API comes from ~/.secrets - source it or set it manually
+# GITHUB_TOKEN comes from ~/.secrets - source it or set it manually
 # Set ENTRA_AUTH_DISABLED=true to skip Entra auth locally
 
 # 2. Run

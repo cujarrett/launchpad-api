@@ -82,11 +82,18 @@ func main() {
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
+	// The platform mounts secretsFrom Secrets at /secrets/<secret>/<key>.
+	ghTokenFile := envOrDefault("GITHUB_TOKEN_FILE", "/secrets/launchpad-github-token/GITHUB_TOKEN")
 	gh := newGithubClient(
-		mustEnv("LAUNCHPAD_API"),
+		envOrDefault("GITHUB_TOKEN", ""),
+		ghTokenFile,
 		envOrDefault("GITHUB_OWNER", "cujarrett"),
 		envOrDefault("GITHUB_REPO", "homelab-workspaces"),
 	)
+	if gh.authToken() == "" {
+		slog.Error("no GitHub token: set GITHUB_TOKEN or mount one at GITHUB_TOKEN_FILE", "file", ghTokenFile)
+		os.Exit(1)
+	}
 
 	b := newBroadcaster()
 

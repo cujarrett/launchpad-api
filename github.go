@@ -6,15 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
 
 type githubClient struct {
-	token  string // read-write PAT
-	owner  string
-	repo   string
-	client *http.Client
+	token     string // read-write PAT, the local-development fallback
+	tokenFile string // mounted Secret, re-read per request so a rotation lands without a restart
+	owner     string
+	repo      string
+	client    *http.Client
 }
 
 type ghFileResponse struct {
@@ -33,7 +35,7 @@ type ghFile struct {
 	Encoding string `json:"encoding"`
 }
 
-func newGithubClient(token, owner, repo string) *githubClient {
+func newGithubClient(token, tokenFile, owner, repo string) *githubClient {
 	// Go's default Transport only keeps 2 idle connections per host. Guest
 	// sandbox creation fans out several concurrent calls to api.github.com
 	// (reads + writes), and GET /api/workspaces cache-miss requests share this
@@ -44,10 +46,11 @@ func newGithubClient(token, owner, repo string) *githubClient {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConnsPerHost = 20
 	return &githubClient{
-		token:  token,
-		owner:  owner,
-		repo:   repo,
-		client: &http.Client{Timeout: 10 * time.Second, Transport: transport},
+		token:     token,
+		tokenFile: tokenFile,
+		owner:     owner,
+		repo:      repo,
+		client:    &http.Client{Timeout: 10 * time.Second, Transport: transport},
 	}
 }
 
@@ -109,8 +112,21 @@ func (c *githubClient) fileContent(ctx context.Context, path string) ([]byte, er
 	return base64.StdEncoding.DecodeString(raw)
 }
 
+// authToken prefers the mounted file so a rotated PAT is picked up without a
+// restart. The env var stays as the fallback, which is how it is set locally.
+func (c *githubClient) authToken() string {
+	if c.tokenFile != "" {
+		if b, err := os.ReadFile(c.tokenFile); err == nil {
+			if t := strings.TrimSpace(string(b)); t != "" {
+				return t
+			}
+		}
+	}
+	return c.token
+}
+
 func (c *githubClient) setHeaders(req *http.Request) {
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.authToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "launchpad-api/1")

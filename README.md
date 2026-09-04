@@ -57,7 +57,7 @@ Contributor endpoints require a valid JWT from Azure Entra ID, validated against
 
 ```bash
 # Required
-export LAUNCHPAD_API=<github-pat>        # contents:write on cujarrett/homelab-workspaces
+export GITHUB_TOKEN=<github-pat>         # contents:write on cujarrett/homelab-workspaces
 export ENTRA_TENANT_ID=<tenant-guid>
 export ENTRA_API_CLIENT_ID=<client-id>
 
@@ -82,7 +82,8 @@ curl http://localhost:8080/healthz
 
 | Variable | Required | Description |
 |---|---|---|
-| `LAUNCHPAD_API` | yes | GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces` |
+| `GITHUB_TOKEN` | in local dev | GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces`. In the cluster the PAT arrives as a file instead. |
+| `GITHUB_TOKEN_FILE` | no | Path to the mounted PAT (default `/secrets/launchpad-github-token/GITHUB_TOKEN`). Read on every GitHub call, so a rotation lands without a restart. |
 | `ENTRA_TENANT_ID` | yes | Azure Entra ID tenant GUID |
 | `ENTRA_API_CLIENT_ID` | yes | Client ID of the API app registration |
 | `PORT` | no | HTTP listen port (default `8080`) |
@@ -92,25 +93,25 @@ curl http://localhost:8080/healthz
 
 ## Deployment
 
-ARM64 Docker image built by CI, pushed to GHCR, deployed as an `Api` XR via ArgoCD. A `launchpad-secrets` Kubernetes Secret injects `LAUNCHPAD_API`, `ENTRA_TENANT_ID`, and `ENTRA_API_CLIENT_ID` via `envFrom`.
+ARM64 Docker image built by CI, pushed to GHCR, deployed as an `Api` XR via ArgoCD. A `launchpad-config` ConfigMap supplies `ENTRA_TENANT_ID` and `ENTRA_API_CLIENT_ID` as environment. The PAT lives in its own `launchpad-github-token` Secret, mounted as a file at `/secrets/launchpad-github-token/GITHUB_TOKEN`.
 
-### Rotating `LAUNCHPAD_API`
+### Rotating the GitHub PAT
 
 ```bash
 print -n "Paste new token: "
 read -rs NEW_TOKEN
 echo
-kubectl patch secret launchpad-secrets -n launchpad \
+kubectl patch secret launchpad-github-token -n launchpad \
   --type='json' \
-  -p='[{"op":"replace","path":"/data/LAUNCHPAD_API","value":"'"$(echo -n "$NEW_TOKEN" | base64)"'"}]'
+  -p='[{"op":"replace","path":"/data/GITHUB_TOKEN","value":"'"$(echo -n "$NEW_TOKEN" | base64)"'"}]'
 unset NEW_TOKEN
-
-kubectl rollout restart deployment/launchpad-api -n launchpad
 ```
+
+No restart. The binary reads the file on every GitHub call, and kubelet refreshes the mount within about a minute.
 
 ### Rotating `HOMELAB_PAT`
 
-Separate from `LAUNCHPAD_API` above, and easy to confuse. `LAUNCHPAD_API` is a Kubernetes Secret
+Separate from the PAT above, and easy to confuse. `launchpad-github-token` is a Kubernetes Secret
 the running binary reads to commit user submissions. `HOMELAB_PAT` is a GitHub Actions secret only
 CI uses, shared across all `homelab-workspaces`-deploying repos and rotated centrally - see
 [GitHub Tokens](https://github.com/cujarrett/homelab/blob/main/docs/github-tokens.md) in the
