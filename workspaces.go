@@ -346,10 +346,10 @@ func (a *app) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// triggerAppSetRefresh patches the xrs ApplicationSet with a refresh annotation
-// so it immediately re-scans the Git repo for new workspace directories instead
-// of waiting for the 2–3 min polling interval. Call this whenever a new workspace
-// directory is created in GitHub so the Application gets created right away.
+// triggerAppSetRefresh patches the xrs ApplicationSet so it re-scans the Git repo
+// for new workspace directories at once instead of waiting out requeueAfterSeconds.
+// ApplicationSets take application-set-refresh, not the refresh annotation that
+// Applications take - the controller ignores the latter and consumes the former.
 func (a *app) triggerAppSetRefresh() {
 	if a.dynClient == nil {
 		return
@@ -358,21 +358,20 @@ func (a *app) triggerAppSetRefresh() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		appSetGVR := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applicationsets"}
-		patch := []byte(`{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"normal"}}}`)
+		patch := []byte(`{"metadata":{"annotations":{"argocd.argoproj.io/application-set-refresh":"true"}}}`)
 		if _, err := a.dynClient.Resource(appSetGVR).Namespace("argocd").Patch(
 			ctx, "xrs", types.MergePatchType, patch, metav1.PatchOptions{},
 		); err != nil {
-			slog.Debug("appset refresh trigger", "err", err)
+			slog.Warn("appset refresh trigger", "err", err)
 		}
 	}()
 }
 
-// triggerArgoSync patches the ArgoCD Application for the given workspace with
-// a hard-refresh annotation so ArgoCD picks up the latest Git commit immediately
-// instead of waiting for the default polling interval (~3 min).
-// Called fire-and-forget. For new workspaces the Application doesn't exist yet
-// (ApplicationSet creates it within ~60 s), so on a not-found error we retry
-// once after 30 s to avoid relying on the 3-min polling interval.
+// triggerArgoSync asks ArgoCD to re-read Git for one workspace rather than waiting
+// out timeout.reconciliation. Best effort: the service account is not granted patch
+// on Applications, because that verb cannot be narrowed to the annotation and would
+// let this pod repoint any Application. Failures stay at Debug for that reason - the
+// appset refresh above is the grant that carries the latency fix.
 func (a *app) triggerArgoSync(workspace string) {
 	if a.dynClient == nil {
 		return
