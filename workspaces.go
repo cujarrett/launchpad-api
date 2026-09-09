@@ -368,10 +368,10 @@ func (a *app) triggerAppSetRefresh() {
 }
 
 // triggerArgoSync asks ArgoCD to re-read Git for one workspace rather than waiting
-// out timeout.reconciliation. Best effort: the service account is not granted patch
-// on Applications, because that verb cannot be narrowed to the annotation and would
-// let this pod repoint any Application. Failures stay at Debug for that reason - the
-// appset refresh above is the grant that carries the latency fix.
+// out timeout.reconciliation. Best effort: patch on Applications is granted only for
+// the fixed demo slots, since that verb cannot be narrowed to the annotation and an
+// unpinned grant would let this pod repoint any Application. Every other workspace
+// gets a Forbidden here and falls back to the timer, so failures stay at Debug.
 func (a *app) triggerArgoSync(workspace string) {
 	if a.dynClient == nil {
 		return
