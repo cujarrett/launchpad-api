@@ -3,7 +3,7 @@ module github.com/cujarrett/launchpad-api
 go 1.26.0
 
 require (
-	github.com/MicahParks/keyfunc/v3 v3.8.1
+	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.37.0
@@ -11,7 +11,7 @@ require (
 )
 
 require (
-	github.com/MicahParks/jwkset v0.11.1 // indirect
+	github.com/MicahParks/jwkset v0.11.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
