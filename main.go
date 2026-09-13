@@ -274,7 +274,6 @@ func (a *app) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("committed", "path", resourcePath)
-	a.triggerArgoSync(tenant)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -355,7 +354,6 @@ func (a *app) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("deleted", "path", path)
-	a.triggerArgoSync(tenant)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -13,9 +13,6 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 var validWorkspaceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$`)
@@ -287,8 +284,6 @@ func (a *app) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.triggerAppSetRefresh()
-	a.triggerArgoSync(req.Name)
 	slog.Info("created workspace", "name", req.Name)
 	w.WriteHeader(http.StatusCreated)
 }
@@ -333,78 +328,8 @@ func (a *app) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Best-effort: delete the ArgoCD Application so it doesn't sit in a
-	// ComparisonError state while the ApplicationSet reconciles.
-	if a.dynClient != nil {
-		argoGVR := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}
-		if delErr := a.dynClient.Resource(argoGVR).Namespace("argocd").Delete(ctx, name, metav1.DeleteOptions{}); delErr != nil {
-			slog.Warn("delete argocd app", "workspace", name, "err", delErr)
-		}
-	}
-
 	slog.Info("deleted workspace", "name", name)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// triggerAppSetRefresh patches the xrs ApplicationSet so it re-scans the Git repo
-// for new workspace directories at once instead of waiting out requeueAfterSeconds.
-// ApplicationSets take application-set-refresh, not the refresh annotation that
-// Applications take - the controller ignores the latter and consumes the former.
-func (a *app) triggerAppSetRefresh() {
-	if a.dynClient == nil {
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		appSetGVR := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applicationsets"}
-		patch := []byte(`{"metadata":{"annotations":{"argocd.argoproj.io/application-set-refresh":"true"}}}`)
-		if _, err := a.dynClient.Resource(appSetGVR).Namespace("argocd").Patch(
-			ctx, "xrs", types.MergePatchType, patch, metav1.PatchOptions{},
-		); err != nil {
-			slog.Warn("appset refresh trigger", "err", err)
-		}
-	}()
-}
-
-// triggerArgoSync asks ArgoCD to re-read Git for one workspace rather than waiting
-// out timeout.reconciliation. Best effort: patch on Applications is granted only for
-// the fixed demo slots, since that verb cannot be narrowed to the annotation and an
-// unpinned grant would let this pod repoint any Application. Every other workspace
-// gets a Forbidden here and falls back to the timer, so failures stay at Debug.
-func (a *app) triggerArgoSync(workspace string) {
-	if a.dynClient == nil {
-		return
-	}
-	go func() {
-		a.doArgoSyncPatch(workspace)
-	}()
-}
-
-func (a *app) doArgoSyncPatch(workspace string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	argoGVR := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}
-	patch := []byte(`{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}`)
-	_, err := a.dynClient.Resource(argoGVR).Namespace("argocd").Patch(
-		ctx, workspace, types.MergePatchType, patch, metav1.PatchOptions{},
-	)
-	if err == nil {
-		return
-	}
-	// App may not exist yet for brand-new workspaces. Schedule one retry so
-	// we still get a fast sync once the ApplicationSet creates the Application,
-	// without relying on ArgoCD's 3-minute polling interval.
-	slog.Debug("argo sync trigger", "workspace", workspace, "err", err, "retry_in", "30s")
-	time.AfterFunc(30*time.Second, func() {
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel2()
-		if _, err2 := a.dynClient.Resource(argoGVR).Namespace("argocd").Patch(
-			ctx2, workspace, types.MergePatchType, patch, metav1.PatchOptions{},
-		); err2 != nil {
-			slog.Debug("argo sync trigger retry", "workspace", workspace, "err", err2)
-		}
-	})
 }
 
 // fetchGuestMeta reads guest.yaml and returns expiry, phase timestamps, and doneAt.

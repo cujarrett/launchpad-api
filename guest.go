@@ -208,7 +208,6 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	// appears rather than polling for it, so there is nothing to wait on here.
 	a.invalidateWorkspacesCache()
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
-	a.triggerAppSetRefresh()
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, guestWorkspaceJSON{
 		Name:      fullName,
@@ -379,7 +378,6 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	}
 
 	slog.Info("created guest resources", "workspace", workspaceName, "kinds", plan, "names", createdNames)
-	a.triggerArgoSync(workspaceName)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -538,7 +536,6 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("patched guest resource", "workspace", workspaceName, "name", resourceName, "withSql", req.WithSql, "withCache", req.WithCache)
-	a.triggerArgoSync(workspaceName)
 	w.WriteHeader(http.StatusNoContent)
 }
 
