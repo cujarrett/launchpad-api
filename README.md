@@ -109,10 +109,10 @@ unset NEW_TOKEN
 
 No restart. The binary reads the file on every GitHub call, and kubelet refreshes the mount within about a minute.
 
-### Rotating `HOMELAB_PAT`
+### Rotating `HOMELAB_WORKSPACES_PAT`
 
 Separate from the PAT above, and easy to confuse. `launchpad-github-token` is a Kubernetes Secret
-the running binary reads to commit user submissions. `HOMELAB_PAT` is a GitHub Actions secret only
+the running binary reads to commit user submissions. `HOMELAB_WORKSPACES_PAT` is a GitHub Actions secret only
 CI uses, shared across all `homelab-workspaces`-deploying repos and rotated centrally - see
 [GitHub Tokens](https://github.com/cujarrett/homelab/blob/main/docs/github-tokens.md) in the
 homelab repo. Rotating one leaves the other alone.
