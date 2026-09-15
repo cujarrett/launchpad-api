@@ -3,6 +3,7 @@
 ## Rules
 
 - **Never run `git commit`, `git push`, or any git command that writes to or modifies repository history or remotes.** If a task requires committing or pushing, stop and tell the user to run the git command manually.
+- **Never add a `Co-Authored-By` trailer or a "Generated with Claude Code" line** to commit messages or PR descriptions, including in suggested commit messages. Commits are authored by the user alone.
 - Do not add external dependencies - stdlib only.
 - Do not use global variables - put state on the `app` struct.
 - Do not call `os.Getenv` inside handlers - read config once in `main()`.
