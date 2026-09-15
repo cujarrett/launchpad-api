@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.67.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.111.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.49.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/nats-io/nats.go v1.53.1
 	github.com/redis/go-redis/v9 v9.22.0
 )
