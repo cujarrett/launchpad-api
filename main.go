@@ -36,8 +36,16 @@ type app struct {
 	staleGuestMu     sync.Mutex
 	staleGuestMisses map[string]int
 
-	guestMetaMu sync.Mutex
-	guestMetaLk map[string]*sync.Mutex
+	guestMetaMu      sync.Mutex
+	guestMetaLk      map[string]*sync.Mutex
+	guestPhaseWrites map[string]int
+
+	// guestCreateMu serializes guest creation so two requests can't both pass
+	// the slot-cap check. Safe because launchpad-api runs one replica.
+	guestCreateMu  sync.Mutex
+	guestCreatorIP map[string]time.Time
+
+	guestPhaseSem chan struct{}
 }
 
 // lockGuestMeta returns a per-workspace mutex so concurrent phase updates to
@@ -62,6 +70,23 @@ func (a *app) forgetGuestMeta(name string) {
 	a.guestMetaMu.Lock()
 	defer a.guestMetaMu.Unlock()
 	delete(a.guestMetaLk, name)
+	delete(a.guestPhaseWrites, name)
+}
+
+// takeGuestPhaseWrite reports whether workspace name still has phase commits
+// left. Each is a GitHub commit, so an unbounded loop of reset/done calls would
+// use up the token's content-creation limit and stall guest create and cleanup.
+func (a *app) takeGuestPhaseWrite(name string) bool {
+	a.guestMetaMu.Lock()
+	defer a.guestMetaMu.Unlock()
+	if a.guestPhaseWrites == nil {
+		a.guestPhaseWrites = map[string]int{}
+	}
+	if a.guestPhaseWrites[name] >= guestMaxPhaseWrites {
+		return false
+	}
+	a.guestPhaseWrites[name]++
+	return true
 }
 
 // invalidateWorkspacesCache forces the next /api/workspaces request, and the
@@ -106,7 +131,14 @@ func main() {
 		dynClient = c
 	}
 
-	a := &app{gh: gh, bcast: b, dynClient: dynClient, resourceCache: map[string]resourceCacheEntry{}}
+	a := &app{
+		gh:             gh,
+		bcast:          b,
+		dynClient:      dynClient,
+		resourceCache:  map[string]resourceCacheEntry{},
+		guestCreatorIP: map[string]time.Time{},
+		guestPhaseSem:  make(chan struct{}, 4),
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

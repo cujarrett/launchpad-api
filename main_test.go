@@ -275,3 +275,19 @@ func TestRenderGuestRBAC(t *testing.T) {
 		}
 	}
 }
+
+func TestIsGuestName(t *testing.T) {
+	cases := map[string]bool{
+		"guest-phantom-burrito":            true,
+		"phantom-burrito":                  false,
+		"guest-a/../my-vinyl":              false,
+		"guest-a/../../launchpad":          false,
+		"guest-a?ref=main":                 false,
+		"guest-" + strings.Repeat("a", 64): false,
+	}
+	for name, want := range cases {
+		if got := isGuestName(name); got != want {
+			t.Errorf("isGuestName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

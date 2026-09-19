@@ -21,7 +21,16 @@ const (
 	guestTTL          = 10 * time.Minute
 	guestMaxCount     = 5
 	guestMaxResources = 10
+	// A normal run records phases 0-4 and done, plus a reset per retry.
+	guestMaxPhaseWrites = 20
 )
+
+// isGuestName guards every guest path value. Go's router decodes %2F into a
+// real slash inside {name}, and GitHub resolves "..", so a prefix check alone
+// lets a request write outside the guest directory.
+func isGuestName(name string) bool {
+	return strings.HasPrefix(name, guestPrefix) && validWorkspaceName.MatchString(name)
+}
 
 var (
 	errWorkspaceNotFound = fmt.Errorf("workspace not found")
@@ -122,6 +131,19 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	r.Body = http.MaxBytesReader(w, r.Body, 1*1024)
 	_ = json.NewDecoder(r.Body).Decode(&body) // ignore parse errors - name is optional
 
+	a.guestCreateMu.Lock()
+	defer a.guestCreateMu.Unlock()
+
+	// One live sandbox per visitor, so a single script can't hold every slot.
+	// Requests without the header come from inside the cluster or the LAN.
+	clientIP := r.Header.Get("CF-Connecting-IP")
+	if clientIP != "" {
+		if until, ok := a.guestCreatorIP[clientIP]; ok && time.Now().Before(until) {
+			http.Error(w, "you already have a live demo - try again when it expires", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	existing, err := a.loadGuestWorkspaces(ctx)
 	if err != nil {
 		slog.Error("create guest workspace: check cap", "err", err)
@@ -206,22 +228,40 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	// The TLS Secrets are placed by secret-mirror-controller, which selects on the
 	// slot label rendered onto the namespace above. It is told when the namespace
 	// appears rather than polling for it, so there is nothing to wait on here.
-	a.invalidateWorkspacesCache()
-	slog.Info("created guest workspace", "name", fullName, "slot", slot)
-	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, guestWorkspaceJSON{
+	created := guestWorkspaceJSON{
 		Name:      fullName,
 		Slot:      slot,
 		CreatedAt: now.Format(time.RFC3339),
 		ExpiresAt: now.Add(guestTTL).Format(time.RFC3339),
-	})
+	}
+	a.invalidateWorkspacesCache()
+	// Seed the guest list with the new workspace rather than refetching. GitHub's
+	// root listing can lag a fresh directory, which would free this slot for the
+	// next create.
+	a.guestListCacheMu.Lock()
+	a.guestListCache = append(append([]guestWorkspaceJSON{}, existing...), created)
+	a.guestListCacheAt = time.Now()
+	a.guestListCacheMu.Unlock()
+
+	if clientIP != "" {
+		for ip, until := range a.guestCreatorIP {
+			if now.After(until) {
+				delete(a.guestCreatorIP, ip)
+			}
+		}
+		a.guestCreatorIP[clientIP] = now.Add(guestTTL)
+	}
+
+	slog.Info("created guest workspace", "name", fullName, "slot", slot)
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, created)
 }
 
 // handleCreateGuestResourceBatch creates an Api or Spa plus any requested
 // add-ons (SQL, NoSQL, object storage, a paired SPA/API) in a single atomic commit.
 func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Request) {
 	workspaceName := r.PathValue("name")
-	if !strings.HasPrefix(workspaceName, guestPrefix) {
+	if !isGuestName(workspaceName) {
 		http.Error(w, "not a guest workspace", http.StatusForbidden)
 		return
 	}
@@ -443,11 +483,11 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 	workspaceName := r.PathValue("name")
 	resourceName := r.PathValue("resource")
 
-	if !strings.HasPrefix(workspaceName, guestPrefix) {
+	if !isGuestName(workspaceName) {
 		http.Error(w, "not a guest workspace", http.StatusForbidden)
 		return
 	}
-	if resourceName != "api" && !strings.HasSuffix(resourceName, "-api") {
+	if !validWorkspaceName.MatchString(resourceName) || (resourceName != "api" && !strings.HasSuffix(resourceName, "-api")) {
 		http.Error(w, "only Api resources can be patched", http.StatusBadRequest)
 		return
 	}
@@ -544,7 +584,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 // across browsers and users. Body: { "phase": "1" }. No auth required.
 func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
 	workspaceName := r.PathValue("name")
-	if !strings.HasPrefix(workspaceName, guestPrefix) {
+	if !isGuestName(workspaceName) {
 		http.Error(w, "not a guest workspace", http.StatusForbidden)
 		return
 	}
@@ -570,7 +610,16 @@ func (a *app) handleRecordGuestPhase(w http.ResponseWriter, r *http.Request) {
 	// Phase times are best-effort telemetry (elapsed-time-per-stage display),
 	// not something the UI needs to block on, so persist in the background.
 	// A per-workspace lock keeps concurrent phase writes from racing.
-	go a.persistGuestPhase(context.Background(), workspaceName, req.Phase, req.Done, req.Reset)
+	select {
+	case a.guestPhaseSem <- struct{}{}:
+	default:
+		http.Error(w, "too many phase updates in flight", http.StatusTooManyRequests)
+		return
+	}
+	go func() {
+		defer func() { <-a.guestPhaseSem }()
+		a.persistGuestPhase(context.Background(), workspaceName, req.Phase, req.Done, req.Reset)
+	}()
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -587,6 +636,8 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 	content, err := a.gh.fileContent(ctx, metaPath)
 	if err != nil {
 		slog.Warn("record guest phase: workspace not found", "workspace", workspaceName, "err", err)
+		// Callers pick the name, so drop its lock rather than keep one per guess.
+		a.forgetGuestMeta(workspaceName)
 		return
 	}
 
@@ -605,12 +656,15 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 	// A commit that produced no resources didn't start the run the user is
 	// watching. Phase times are write-once, so a failed attempt would otherwise
 	// pin the clock to itself and the retry would inherit its start time.
+	changed := false
 	if reset {
+		changed = len(raw.PhaseTimes) > 0 || raw.DoneAt != ""
 		raw.PhaseTimes = nil
 		raw.DoneAt = ""
 	} else if done {
 		if raw.DoneAt == "" {
 			raw.DoneAt = now
+			changed = true
 		}
 	} else if phase != "" {
 		if raw.PhaseTimes == nil {
@@ -618,7 +672,15 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 		}
 		if _, exists := raw.PhaseTimes[phase]; !exists {
 			raw.PhaseTimes[phase] = now
+			changed = true
 		}
+	}
+	if !changed {
+		return
+	}
+	if !a.takeGuestPhaseWrite(workspaceName) {
+		slog.Warn("record guest phase: write limit reached", "workspace", workspaceName)
+		return
 	}
 
 	updated, err := yaml.Marshal(raw)
