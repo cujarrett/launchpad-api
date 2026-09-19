@@ -810,6 +810,12 @@ func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 		slog.Error("guest cleanup: list dir", "workspace", name, "err", err)
 		return
 	}
+	// namespace.yaml goes last. Deleted any earlier, ArgoCD re-applies the namespace
+	// from CreateNamespace without its tracking annotation, and the app's cascade
+	// delete then leaves it behind.
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[j].Name == "namespace.yaml" && entries[i].Name != "namespace.yaml"
+	})
 	ok := true
 	for _, e := range entries {
 		if e.Type != "file" {
