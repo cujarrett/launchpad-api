@@ -237,8 +237,15 @@ func TestRenderResource_UnknownKind(t *testing.T) {
 func TestRenderNamespace(t *testing.T) {
 	yaml := RenderNamespace("my-workspace")
 	// The sync-wave is what keeps namespace teardown from deadlocking on
-	// managed-resource finalizers, so assert it rather than trust it.
-	for _, want := range []string{"kind: Namespace", "name: my-workspace", `argocd.argoproj.io/sync-wave: "-1"`} {
+	// managed-resource finalizers, and the two labels are what admission policy
+	// matches on, so assert them rather than trust them.
+	for _, want := range []string{
+		"kind: Namespace",
+		"name: my-workspace",
+		`platform.local.lab/workloads: "true"`,
+		"istio-injection: enabled",
+		`argocd.argoproj.io/sync-wave: "-1"`,
+	} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in namespace YAML:\n%s", want, yaml)
 		}
@@ -251,6 +258,8 @@ func TestRenderGuestNamespace(t *testing.T) {
 	for _, want := range []string{
 		"name: guest-phantom-burrito",
 		"launchpad.local.lab/slot: demo3",
+		`platform.local.lab/workloads: "true"`,
+		"istio-injection: enabled",
 		`argocd.argoproj.io/sync-wave: "-1"`,
 	} {
 		if !strings.Contains(out, want) {

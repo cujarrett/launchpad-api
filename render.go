@@ -37,17 +37,34 @@ func RenderResource(r writeRequest) (string, error) {
 	return buf.String(), nil
 }
 
-// RenderNamespace renders a namespace manifest. The sync-wave puts the Namespace
-// in the last prune wave, because a namespace that starts terminating while
-// managed resources still hold finalizers deadlocks and never finishes.
+// RenderNamespace renders a namespace manifest.
+//
+// Shipping the Namespace as a file opts the workspace out of the ApplicationSet's
+// managedNamespaceMetadata, which only labels a namespace ArgoCD creates itself,
+// so both labels admission policy reads are set here instead.
+//
+// The sync-wave puts the Namespace in the last prune wave, because a namespace
+// that starts terminating while managed resources still hold finalizers
+// deadlocks and never finishes.
 func RenderNamespace(name string) string {
-	return fmt.Sprintf("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n  annotations:\n    linkerd.io/inject: enabled\n    argocd.argoproj.io/sync-wave: \"-1\"\n", name)
+	return fmt.Sprintf(`apiVersion: v1
+kind: Namespace
+metadata:
+  name: %[1]s
+  labels:
+    platform.local.lab/workloads: "true"
+    istio-injection: enabled
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+`, name)
 }
 
 // RenderGuestNamespace renders a guest sandbox namespace.
 //
 // The slot label is what secret-mirror-controller selects on - guests name their
-// own workspaces, so there is no pattern to match.
+// own workspaces, so there is no pattern to match. The other two labels are what
+// admission policy reads; the ApplicationSet cannot set them, because
+// managedNamespaceMetadata only labels a namespace ArgoCD creates itself.
 //
 // The sync-wave puts the Namespace in the last prune wave. A namespace that
 // starts terminating while managed resources still hold finalizers deadlocks,
@@ -59,8 +76,9 @@ metadata:
   name: %[1]s
   labels:
     launchpad.local.lab/slot: %[2]s
+    platform.local.lab/workloads: "true"
+    istio-injection: enabled
   annotations:
-    linkerd.io/inject: enabled
     argocd.argoproj.io/sync-wave: "-1"
 `, name, slot)
 }
@@ -97,6 +115,10 @@ kind: Spa
 metadata:
   name: {{ .Name }}
   namespace: {{ .Params.namespace }}
+  annotations:
+    # A Spa naming an apiProxies target is rejected if that Api is not admitted
+    # yet, so the Spa waits a wave. Namespace is -1, Api is 0, this is 1.
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   parameters:
     image: {{ .Params.image }}
