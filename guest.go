@@ -439,7 +439,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 			p["cache"] = true
 		}
 		p["host"] = fmt.Sprintf("%s-api.mattjarrett.dev", slot)
-		p["tlsSecret"] = slot + "-api-tls"
+		p["tlsSecret"] = slot + "-tls"
 		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
