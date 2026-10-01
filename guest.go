@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -970,7 +971,15 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	workspaces, err := a.loadGuestWorkspaces(ctx)
 	if err != nil {
 		slog.Error("metrics: load guest workspaces", "err", err)
-		http.Error(w, "upstream error", http.StatusBadGateway)
+		a.metricsMu.Lock()
+		last := a.metricsLast
+		a.metricsMu.Unlock()
+		if last == nil {
+			http.Error(w, "upstream error", http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		_, _ = w.Write(last)
 		return
 	}
 
@@ -1010,11 +1019,18 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		totalResources += c
 	}
 
+	var body bytes.Buffer
+	fmt.Fprintf(&body, "# HELP launchpad_guest_workspace_count Number of active guest workspaces.\n")
+	fmt.Fprintf(&body, "# TYPE launchpad_guest_workspace_count gauge\n")
+	fmt.Fprintf(&body, "launchpad_guest_workspace_count %d\n", len(liveWorkspaces))
+	fmt.Fprintf(&body, "# HELP launchpad_guest_resource_count Total resources across all active guest workspaces.\n")
+	fmt.Fprintf(&body, "# TYPE launchpad_guest_resource_count gauge\n")
+	fmt.Fprintf(&body, "launchpad_guest_resource_count %d\n", totalResources)
+
+	a.metricsMu.Lock()
+	a.metricsLast = body.Bytes()
+	a.metricsMu.Unlock()
+
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "# HELP launchpad_guest_workspace_count Number of active guest workspaces.\n")
-	_, _ = fmt.Fprintf(w, "# TYPE launchpad_guest_workspace_count gauge\n")
-	_, _ = fmt.Fprintf(w, "launchpad_guest_workspace_count %d\n", len(liveWorkspaces))
-	_, _ = fmt.Fprintf(w, "# HELP launchpad_guest_resource_count Total resources across all active guest workspaces.\n")
-	_, _ = fmt.Fprintf(w, "# TYPE launchpad_guest_resource_count gauge\n")
-	_, _ = fmt.Fprintf(w, "launchpad_guest_resource_count %d\n", totalResources)
+	_, _ = w.Write(body.Bytes())
 }

@@ -46,6 +46,11 @@ type app struct {
 	guestCreatorIP map[string]time.Time
 
 	guestPhaseSem chan struct{}
+
+	// Last good /metrics body, served while GitHub is unreachable so the
+	// scrape target stays up.
+	metricsMu   sync.Mutex
+	metricsLast []byte
 }
 
 // lockGuestMeta returns a per-workspace mutex so concurrent phase updates to
