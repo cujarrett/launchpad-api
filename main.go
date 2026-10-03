@@ -271,13 +271,12 @@ func (a *app) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Workspace = tenant
 
-	// Default namespace param to tenant name if not set.
+	// Always the tenant. The workloads AppProject allows every workspace namespace,
+	// so a caller-chosen value would deploy into another workspace.
 	if req.Params == nil {
 		req.Params = map[string]any{}
 	}
-	if _, ok := req.Params["namespace"]; !ok {
-		req.Params["namespace"] = tenant
-	}
+	req.Params["namespace"] = tenant
 
 	if err := validate(req); err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)

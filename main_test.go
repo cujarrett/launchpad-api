@@ -1,8 +1,11 @@
 package main
 
 import (
+	"io"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,25 +113,40 @@ func TestValidate_Wordpress_Valid(t *testing.T) {
 	}
 }
 
-func TestValidate_NewlineInjection(t *testing.T) {
-	err := validate(writeRequest{
-		Kind:   "Api",
-		Name:   "my-api",
-		Params: map[string]any{"image": "foo\nbar: injected"},
-	})
-	if err == nil || !strings.Contains(err.Error(), "newlines are not allowed") {
-		t.Fatalf("expected newline error, got %v", err)
+// Line breaks YAML honours beyond \n and \r, and a list item, which the old
+// string-only check never looked at.
+func TestRenderResource_Injection(t *testing.T) {
+	cases := map[string]writeRequest{
+		"newline":   {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "foo\nmetadata: {namespace: kube-system}"}},
+		"nel":       {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "foo\u0085evil: x"}},
+		"separator": {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "foo\u2028evil: x"}},
+		"list item": {Kind: "Topic", Name: "a", Params: map[string]any{"namespace": "dev", "streamName": "S", "subjects": []any{"a\n---\nkind: RoleBinding"}}},
+		"map value": {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "i", "secretRef": map[string]any{"name": "s\n    evil: x"}}},
 	}
-}
-
-func TestValidate_CarriageReturnInjection(t *testing.T) {
-	err := validate(writeRequest{
-		Kind:   "Api",
-		Name:   "my-api",
-		Params: map[string]any{"image": "foo\rbar"},
-	})
-	if err == nil || !strings.Contains(err.Error(), "newlines are not allowed") {
-		t.Fatalf("expected newline error, got %v", err)
+	for name, req := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, err := RenderResource(req)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			dec := yaml.NewDecoder(strings.NewReader(out))
+			var doc map[string]any
+			if err := dec.Decode(&doc); err != nil {
+				t.Fatalf("parse: %v\n%s", err, out)
+			}
+			if err := dec.Decode(&map[string]any{}); err != io.EOF {
+				t.Fatalf("rendered more than one document:\n%s", out)
+			}
+			meta := doc["metadata"].(map[string]any)
+			if meta["namespace"] != "dev" {
+				t.Errorf("namespace = %v, want dev:\n%s", meta["namespace"], out)
+			}
+			for k := range doc["spec"].(map[string]any)["parameters"].(map[string]any) {
+				if k == "evil" {
+					t.Errorf("injected key reached parameters:\n%s", out)
+				}
+			}
+		})
 	}
 }
 
@@ -148,7 +166,7 @@ func TestRenderResource_Api(t *testing.T) {
 	}
 	// The poll-interval annotation is what keeps AWS binding secrets from waiting
 	// a full minute for Crossplane's next render pass.
-	for _, want := range []string{"kind: Api", "name: my-api", "image: ghcr.io/foo/bar:1.0", `crossplane.io/poll-interval: "5s"`} {
+	for _, want := range []string{"kind: Api", `name: "my-api"`, `image: "ghcr.io/foo/bar:1.0"`, `crossplane.io/poll-interval: "5s"`} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in rendered YAML:\n%s", want, yaml)
 		}
@@ -178,7 +196,7 @@ func TestRenderResource_Spa(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"kind: Spa", "host: spa.example.com"} {
+	for _, want := range []string{"kind: Spa", `host: "spa.example.com"`} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("expected %q in rendered YAML:\n%s", want, yaml)
 		}
@@ -194,7 +212,7 @@ func TestRenderResource_Spa_DefaultTLSIssuer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "tlsIssuer: letsencrypt-prod") {
+	if !strings.Contains(yaml, `tlsIssuer: "letsencrypt-prod"`) {
 		t.Errorf("expected default tlsIssuer in rendered YAML:\n%s", yaml)
 	}
 }
@@ -208,7 +226,7 @@ func TestRenderResource_Api_OptionalHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(yaml, "host: api.example.com") {
+	if !strings.Contains(yaml, `host: "api.example.com"`) {
 		t.Errorf("expected host in rendered YAML:\n%s", yaml)
 	}
 }

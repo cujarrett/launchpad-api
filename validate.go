@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 )
 
 // writeRequest is the body POSTed by the Angular client.
@@ -57,17 +56,6 @@ func validate(req writeRequest) error {
 		return fmt.Errorf("unknown kind: %q", req.Kind)
 	}
 
-	return noNewlines(p)
-}
-
-// noNewlines rejects any string param value containing newlines, which would
-// allow a Contributor to inject arbitrary YAML keys into the rendered manifest.
-func noNewlines(p map[string]any) error {
-	for k, v := range p {
-		if s, ok := v.(string); ok && strings.ContainsAny(s, "\n\r") {
-			return fmt.Errorf("params.%s: newlines are not allowed", k)
-		}
-	}
 	return nil
 }
 

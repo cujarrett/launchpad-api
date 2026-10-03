@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"text/template"
 )
@@ -20,8 +21,15 @@ func init() {
 		"Wordpress":     wordpressTemplate,
 	}
 	for kind, tmpl := range defs {
-		templates[kind] = template.Must(template.New(kind).Parse(tmpl))
+		templates[kind] = template.Must(template.New(kind).Funcs(template.FuncMap{"q": quote}).Parse(tmpl))
 	}
+}
+
+// quote renders a param as JSON, which is valid YAML on one line.
+// Every value a Contributor sends passes through it, so none can start a new key or document.
+func quote(v any) (string, error) {
+	b, err := json.Marshal(v)
+	return string(b), err
 }
 
 // RenderResource renders a platform XR YAML manifest from a writeRequest.
@@ -113,32 +121,32 @@ subjects:
 const spaTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Spa
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
   annotations:
     # A Spa naming an apiProxies target is rejected if that Api is not admitted
     # yet, so the Spa waits a wave. Namespace is -1, Api is 0, this is 1.
     argocd.argoproj.io/sync-wave: "1"
 spec:
   parameters:
-    image: {{ .Params.image }}
-    host: {{ .Params.host }}
+    image: {{ .Params.image | q }}
+    host: {{ .Params.host | q }}
 {{- if .Params.tlsSecret }}
-    tlsSecret: {{ .Params.tlsSecret }}
+    tlsSecret: {{ .Params.tlsSecret | q }}
 {{- else }}
-    tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" }}
+    tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" | q }}
 {{- end }}
-    replicas: {{ or .Params.replicas 1 }}
+    replicas: {{ or .Params.replicas 1 | q }}
 {{- if .Params.contentSecurityPolicy }}
-    contentSecurityPolicy: {{ .Params.contentSecurityPolicy }}
+    contentSecurityPolicy: {{ .Params.contentSecurityPolicy | q }}
 {{- end }}
 `
 
 const apiTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Api
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
   annotations:
     # AWS binding secrets need a second render pass to pick up the RolesAnywhere
     # profile ARN. Crossplane's 1m default poll made most sandboxes wait a full
@@ -146,41 +154,41 @@ metadata:
     crossplane.io/poll-interval: "5s"
 spec:
   parameters:
-    image: {{ .Params.image }}
-    port: {{ or .Params.port 8080 }}
-    replicas: {{ or .Params.replicas 1 }}
+    image: {{ .Params.image | q }}
+    port: {{ or .Params.port 8080 | q }}
+    replicas: {{ or .Params.replicas 1 | q }}
 {{- if .Params.host }}
-    host: {{ .Params.host }}
+    host: {{ .Params.host | q }}
 {{- if .Params.tlsSecret }}
-    tlsSecret: {{ .Params.tlsSecret }}
+    tlsSecret: {{ .Params.tlsSecret | q }}
 {{- else }}
-    tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" }}
+    tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" | q }}
 {{- end }}
 {{- end }}
 {{- if .Params.sqlRef }}
     sqlRef:
-      name: {{ .Params.sqlRef }}
+      name: {{ .Params.sqlRef | q }}
       backend: private-cloud
 {{- end }}
 {{- if .Params.nosqlRef }}
     nosqlRef:
-      name: {{ .Params.nosqlRef }}
+      name: {{ .Params.nosqlRef | q }}
 {{- end }}
 {{- if .Params.objectStorageRefs }}
     objectStorageRefs:
-      - name: {{ .Params.objectStorageRefs }}
+      - name: {{ .Params.objectStorageRefs | q }}
 {{- end }}
 {{- if .Params.topicRef }}
     topicRef:
-      name: {{ .Params.topicRef }}
+      name: {{ .Params.topicRef | q }}
 {{- end }}
 {{- if .Params.subscriptionRef }}
     subscriptionRef:
-      name: {{ .Params.subscriptionRef }}
+      name: {{ .Params.subscriptionRef | q }}
 {{- end }}
 {{- if .Params.secretRef }}
     secretRef:
-      name: {{ index .Params.secretRef "name" }}
+      name: {{ index .Params.secretRef "name" | q }}
 {{- end }}
 {{- if .Params.cache }}
     cache:
@@ -188,26 +196,26 @@ spec:
       backend: private-cloud
 {{- end }}
 {{- if .Params.readinessCheckPath }}
-    readinessCheckPath: {{ .Params.readinessCheckPath }}
+    readinessCheckPath: {{ .Params.readinessCheckPath | q }}
 {{- end }}
 `
 
 const sqlTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Sql
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
 spec:
   parameters:
-    backend: {{ or .Params.backend "private-cloud" }}
-    dataRetention: {{ or .Params.dataRetention "delete" }}
+    backend: {{ or .Params.backend "private-cloud" | q }}
+    dataRetention: {{ or .Params.dataRetention "delete" | q }}
 {{- if .Params.size }}
-    size: {{ .Params.size }}
+    size: {{ .Params.size | q }}
 {{- end }}
 {{- if .Params.consumerServiceAccounts }}
     consumerServiceAccounts:
 {{- range .Params.consumerServiceAccounts }}
-      - {{ . }}
+      - {{ . | q }}
 {{- end }}
 {{- end }}
 `
@@ -215,83 +223,83 @@ spec:
 const nosqlTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: NoSql
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
 spec:
   parameters:
-    dataRetention: {{ or .Params.dataRetention "delete" }}
+    dataRetention: {{ or .Params.dataRetention "delete" | q }}
 {{- if .Params.region }}
-    region: {{ .Params.region }}
+    region: {{ .Params.region | q }}
 {{- end }}
 {{- if .Params.partitionKey }}
-    partitionKey: {{ .Params.partitionKey }}
+    partitionKey: {{ .Params.partitionKey | q }}
 {{- end }}
 {{- if .Params.partitionKeyType }}
-    partitionKeyType: {{ .Params.partitionKeyType }}
+    partitionKeyType: {{ .Params.partitionKeyType | q }}
 {{- end }}
 `
 
 const objectstorageTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: ObjectStorage
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
 spec:
   parameters:
-    dataRetention: {{ or .Params.dataRetention "delete" }}
+    dataRetention: {{ or .Params.dataRetention "delete" | q }}
 {{- if .Params.region }}
-    region: {{ .Params.region }}
+    region: {{ .Params.region | q }}
 {{- end }}
 `
 
 const topicTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Topic
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
 spec:
   parameters:
-    streamName: {{ .Params.streamName }}
+    streamName: {{ .Params.streamName | q }}
     subjects:
 {{- range .Params.subjects }}
-      - {{ . }}
+      - {{ . | q }}
 {{- end }}
-    retention: {{ or .Params.retention "limits" }}
-    maxAge: {{ or .Params.maxAge "720h" }}
-    replicas: {{ or .Params.replicas 3 }}
+    retention: {{ or .Params.retention "limits" | q }}
+    maxAge: {{ or .Params.maxAge "720h" | q }}
+    replicas: {{ or .Params.replicas 3 | q }}
 `
 
 const subscriptionTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Subscription
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
 spec:
   parameters:
     topicRef:
-      name: {{ .Params.topicRef }}
+      name: {{ .Params.topicRef | q }}
 {{- if .Params.filterSubject }}
-    filterSubject: {{ .Params.filterSubject }}
+    filterSubject: {{ .Params.filterSubject | q }}
 {{- end }}
-    deliverPolicy: {{ or .Params.deliverPolicy "all" }}
-    ackPolicy: {{ or .Params.ackPolicy "explicit" }}
-    ackWait: {{ or .Params.ackWait "30s" }}
+    deliverPolicy: {{ or .Params.deliverPolicy "all" | q }}
+    ackPolicy: {{ or .Params.ackPolicy "explicit" | q }}
+    ackWait: {{ or .Params.ackWait "30s" | q }}
 `
 
 const wordpressTemplate = `apiVersion: platform.local.lab/v1alpha1
 kind: Wordpress
 metadata:
-  name: {{ .Name }}
-  namespace: {{ .Params.namespace }}
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
 spec:
   parameters:
-    host: {{ .Params.host }}
-    dataRetention: {{ or .Params.dataRetention "retain" }}
-    size: {{ or .Params.size "sm" }}
+    host: {{ .Params.host | q }}
+    dataRetention: {{ or .Params.dataRetention "retain" | q }}
+    size: {{ or .Params.size "sm" | q }}
 {{- if .Params.storageSize }}
-    storageSize: {{ .Params.storageSize }}
+    storageSize: {{ .Params.storageSize | q }}
 {{- end }}
 {{- if .Params.dbStorageSize }}
-    dbStorageSize: {{ .Params.dbStorageSize }}
+    dbStorageSize: {{ .Params.dbStorageSize | q }}
 {{- end }}
 `
