@@ -968,17 +968,18 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	// Written before any GitHub call, so the failure counter is scraped even when GitHub refuses the token.
+	_, _ = fmt.Fprintf(w, "# HELP launchpad_github_auth_failures_total GitHub API responses with status 401.\n"+
+		"# TYPE launchpad_github_auth_failures_total counter\n"+
+		"launchpad_github_auth_failures_total %d\n", a.gh.authFailures.Load())
+
 	workspaces, err := a.loadGuestWorkspaces(ctx)
 	if err != nil {
 		slog.Error("metrics: load guest workspaces", "err", err)
 		a.metricsMu.Lock()
 		last := a.metricsLast
 		a.metricsMu.Unlock()
-		if last == nil {
-			http.Error(w, "upstream error", http.StatusBadGateway)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		_, _ = w.Write(last)
 		return
 	}
@@ -1031,6 +1032,5 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	a.metricsLast = body.Bytes()
 	a.metricsMu.Unlock()
 
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write(body.Bytes())
 }

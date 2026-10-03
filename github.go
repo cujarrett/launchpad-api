@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,6 +18,22 @@ type githubClient struct {
 	owner     string
 	repo      string
 	client    *http.Client
+
+	// 401s from GitHub, exported on /metrics so an expired or revoked token alerts.
+	authFailures atomic.Uint64
+}
+
+type authFailureCounter struct {
+	next  http.RoundTripper
+	count *atomic.Uint64
+}
+
+func (t authFailureCounter) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.next.RoundTrip(req)
+	if err == nil && resp.StatusCode == http.StatusUnauthorized {
+		t.count.Add(1)
+	}
+	return resp, err
 }
 
 type ghFileResponse struct {
@@ -45,13 +62,14 @@ func newGithubClient(token, tokenFile, owner, repo string) *githubClient {
 	// concurrent requests can reuse connections instead of re-dialing.
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConnsPerHost = 20
-	return &githubClient{
+	c := &githubClient{
 		token:     token,
 		tokenFile: tokenFile,
 		owner:     owner,
 		repo:      repo,
-		client:    &http.Client{Timeout: 10 * time.Second, Transport: transport},
 	}
+	c.client = &http.Client{Timeout: 10 * time.Second, Transport: authFailureCounter{next: transport, count: &c.authFailures}}
+	return c
 }
 
 func (c *githubClient) listDir(ctx context.Context, path string) ([]ghEntry, error) {

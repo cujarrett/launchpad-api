@@ -47,8 +47,7 @@ type app struct {
 
 	guestPhaseSem chan struct{}
 
-	// Last good /metrics body, served while GitHub is unreachable so the
-	// scrape target stays up.
+	// Last good guest gauges, served while GitHub is unreachable.
 	metricsMu   sync.Mutex
 	metricsLast []byte
 }
