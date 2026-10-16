@@ -12,17 +12,6 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-var kindToXRD = map[string]string{
-	"Spa":           "spas.platform.local.lab",
-	"Api":           "apis.platform.local.lab",
-	"Sql":           "sqls.platform.local.lab",
-	"NoSql":         "nosqls.platform.local.lab",
-	"ObjectStorage": "objectstorages.platform.local.lab",
-	"Topic":         "topics.platform.local.lab",
-	"Subscription":  "subscriptions.platform.local.lab",
-	"Wordpress":     "wordpresses.platform.local.lab",
-}
-
 var xrdGVR = schema.GroupVersionResource{
 	Group:    "apiextensions.crossplane.io",
 	Version:  "v2",
@@ -32,11 +21,12 @@ var xrdGVR = schema.GroupVersionResource{
 func (a *app) handleGetSchema(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("kind")
 
-	xrdName, ok := kindToXRD[kind]
+	plural, ok := pluralForKind(kind)
 	if !ok {
 		http.Error(w, fmt.Sprintf("unknown kind: %q", kind), http.StatusBadRequest)
 		return
 	}
+	xrdName := plural + "." + xrGroup
 
 	if a.dynClient == nil {
 		http.Error(w, "k8s unavailable", http.StatusServiceUnavailable)
@@ -107,24 +97,25 @@ func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine kind from the broadcaster cache - it already has every known XR.
-	a.bcast.mu.RLock()
-	cacheKey := ""
-	var kind string
-	for k, v := range a.bcast.cache {
-		// cache key is "tenant/kind/name"
-		if v.Workspace == tenant && v.Name == resource {
-			cacheKey = k
-			kind = v.Kind
-			break
+	// ?kind= is needed when two kinds share a name, e.g. a GraphApi and the
+	// Api it composes. Without it, kind comes from the broadcaster cache.
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		a.bcast.mu.RLock()
+		for _, v := range a.bcast.cache {
+			if v.Workspace == tenant && v.Name == resource {
+				kind = v.Kind
+				break
+			}
 		}
+		a.bcast.mu.RUnlock()
 	}
-	a.bcast.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	if cacheKey == "" {
+	plural, ok := pluralForKind(kind)
+	if !ok {
 		// Fallback: scan all known plurals to find the resource.
 		params, found := findResourceParams(ctx, a.dynClient, tenant, resource)
 		if !found {
@@ -136,7 +127,6 @@ func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plural := kindToPlural[kind]
 	gvr := schema.GroupVersionResource{Group: xrGroup, Version: xrVersion, Resource: plural}
 	obj, err := xrClient(a.dynClient, gvr, tenant).Get(ctx, resource, metav1.GetOptions{})
 	if err != nil {
@@ -147,18 +137,6 @@ func (a *app) handleGetResourceValues(w http.ResponseWriter, r *http.Request) {
 	params, _, _ := unstructured.NestedMap(obj.Object, "spec", "parameters")
 	delete(params, "namespace")
 	writeJSON(w, params)
-}
-
-// kindToPlural maps ResourceKind → plural used in GVR.
-var kindToPlural = map[string]string{
-	"Spa":           "spas",
-	"Api":           "apis",
-	"Sql":           "sqls",
-	"NoSql":         "nosqls",
-	"ObjectStorage": "objectstorages",
-	"Topic":         "topics",
-	"Subscription":  "subscriptions",
-	"Wordpress":     "wordpresses",
 }
 
 // Every platform XRD is Namespaced, so all XR Get calls need a namespace.

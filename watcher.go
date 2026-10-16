@@ -51,6 +51,20 @@ var watchedResources = []xrResource{
 	{"topics", "Topic"},
 	{"subscriptions", "Subscription"},
 	{"wordpresses", "Wordpress"},
+	{"caches", "Cache"},
+	{"graphapis", "GraphApi"},
+	{"federatedgraphs", "FederatedGraph"},
+}
+
+// pluralForKind is the one lookup from kind to resource name, so a new kind
+// only needs adding to watchedResources.
+func pluralForKind(kind string) (string, bool) {
+	for _, res := range watchedResources {
+		if res.kind == kind {
+			return res.plural, true
+		}
+	}
+	return "", false
 }
 
 const xrGroup = "platform.local.lab"
