@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
 
     permissions:
       contents: read
@@ -26,9 +26,6 @@ jobs:
       - name: Test
         working-directory: hello-world-api
         run: go test -race ./...
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -49,3 +46,5 @@ jobs:
           tags: |
             ghcr.io/cujarrett/hello-world-api:latest
             ghcr.io/cujarrett/hello-world-api:sha-${{ github.sha }}
+          cache-from: type=gha,scope=hello-world-api
+          cache-to: type=gha,mode=max,scope=hello-world-api

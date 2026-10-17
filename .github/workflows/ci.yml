@@ -21,7 +21,7 @@ jobs:
         run: go vet ./...
 
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     needs: test
     if: github.ref == 'refs/heads/main'
 
@@ -32,9 +32,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -55,6 +52,8 @@ jobs:
           tags: |
             ghcr.io/cujarrett/launchpad-api:main
             ghcr.io/cujarrett/launchpad-api:sha-${{ github.sha }}
+          cache-from: type=gha,scope=launchpad-api
+          cache-to: type=gha,mode=max,scope=launchpad-api
 
   deploy:
     needs: build-and-push
