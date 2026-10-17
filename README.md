@@ -93,26 +93,4 @@ curl http://localhost:8080/healthz
 
 ## Deployment
 
-ARM64 Docker image built by CI, pushed to GHCR, deployed as an `Api` XR via ArgoCD. A `launchpad-config` ConfigMap supplies `ENTRA_TENANT_ID` and `ENTRA_API_CLIENT_ID` as environment. The PAT lives in its own `launchpad-github-token` Secret, mounted as a file at `/secrets/launchpad-github-token/GITHUB_TOKEN`.
-
-### Rotating the GitHub PAT
-
-```bash
-print -n "Paste new token: "
-read -rs NEW_TOKEN
-echo
-kubectl patch secret launchpad-github-token -n launchpad \
-  --type='json' \
-  -p='[{"op":"replace","path":"/data/GITHUB_TOKEN","value":"'"$(echo -n "$NEW_TOKEN" | base64)"'"}]'
-unset NEW_TOKEN
-```
-
-No restart. The binary reads the file on every GitHub call, and kubelet refreshes the mount within about a minute.
-
-### Rotating `HOMELAB_WORKSPACES_PAT`
-
-Separate from the PAT above, and easy to confuse. `launchpad-github-token` is a Kubernetes Secret
-the running binary reads to commit user submissions. `HOMELAB_WORKSPACES_PAT` is a GitHub Actions secret only
-CI uses, shared across all `homelab-workspaces`-deploying repos and rotated centrally - see
-[GitHub Tokens](https://github.com/cujarrett/homelab/blob/main/docs/github-tokens.md) in the
-homelab repo. Rotating one leaves the other alone.
+ARM64 image built by CI, pushed to GHCR and deployed to the homelab cluster by ArgoCD.
