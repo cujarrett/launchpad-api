@@ -135,16 +135,6 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	a.guestCreateMu.Lock()
 	defer a.guestCreateMu.Unlock()
 
-	// One live sandbox per visitor, so a single script can't hold every slot.
-	// Requests without the header come from inside the cluster or the LAN.
-	clientIP := r.Header.Get("CF-Connecting-IP")
-	if clientIP != "" {
-		if until, ok := a.guestCreatorIP[clientIP]; ok && time.Now().Before(until) {
-			http.Error(w, "you already have a live demo - try again when it expires", http.StatusTooManyRequests)
-			return
-		}
-	}
-
 	existing, err := a.loadGuestWorkspaces(ctx)
 	if err != nil {
 		slog.Error("create guest workspace: check cap", "err", err)
@@ -243,15 +233,6 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	a.guestListCache = append(append([]guestWorkspaceJSON{}, existing...), created)
 	a.guestListCacheAt = time.Now()
 	a.guestListCacheMu.Unlock()
-
-	if clientIP != "" {
-		for ip, until := range a.guestCreatorIP {
-			if now.After(until) {
-				delete(a.guestCreatorIP, ip)
-			}
-		}
-		a.guestCreatorIP[clientIP] = now.Add(guestTTL)
-	}
 
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
 	w.WriteHeader(http.StatusCreated)

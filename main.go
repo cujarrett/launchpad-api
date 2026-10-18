@@ -42,8 +42,7 @@ type app struct {
 
 	// guestCreateMu serializes guest creation so two requests can't both pass
 	// the slot-cap check. Safe because launchpad-api runs one replica.
-	guestCreateMu  sync.Mutex
-	guestCreatorIP map[string]time.Time
+	guestCreateMu sync.Mutex
 
 	guestPhaseSem chan struct{}
 
@@ -136,12 +135,11 @@ func main() {
 	}
 
 	a := &app{
-		gh:             gh,
-		bcast:          b,
-		dynClient:      dynClient,
-		resourceCache:  map[string]resourceCacheEntry{},
-		guestCreatorIP: map[string]time.Time{},
-		guestPhaseSem:  make(chan struct{}, 4),
+		gh:            gh,
+		bcast:         b,
+		dynClient:     dynClient,
+		resourceCache: map[string]resourceCacheEntry{},
+		guestPhaseSem: make(chan struct{}, 4),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
