@@ -63,4 +63,4 @@ jobs:
       namespace: launchpad
       file: launchpad/launchpad-api.yaml
     secrets:
-      homelab_pat: ${{ secrets.HOMELAB_WORKSPACES_PAT }}
+      app_private_key: ${{ secrets.HOMELAB_WORKSPACES_APP_KEY }}
