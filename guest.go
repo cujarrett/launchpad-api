@@ -195,7 +195,6 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	// on the branch tip and one can 409 (see upsertFilesAtomic's doc comment).
 	// Write both files in one atomic commit instead.
 	nsPath := fmt.Sprintf("%s/namespace.yaml", fullName)
-	rbacPath := fmt.Sprintf("%s/rbac.yaml", fullName)
 	metaPath := fmt.Sprintf("%s/guest.yaml", fullName)
 
 	// The client asks for this workspace's resources while the commit below is still
@@ -206,8 +205,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	a.resourceCacheMu.Unlock()
 
 	files := []batchFile{
-		{Path: nsPath, Content: RenderGuestNamespace(fullName, slot)},
-		{Path: rbacPath, Content: RenderGuestRBAC(fullName)},
+		{Path: nsPath, Content: RenderGuestNamespace(fullName)},
 		{Path: metaPath, Content: metaYAML},
 	}
 	if err := a.gh.upsertFilesAtomic(ctx, files, "feat: create guest workspace "+fullName); err != nil {
@@ -216,9 +214,6 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// The TLS Secrets are placed by secret-mirror-controller, which selects on the
-	// slot label rendered onto the namespace above. It is told when the namespace
-	// appears rather than polling for it, so there is nothing to wait on here.
 	created := guestWorkspaceJSON{
 		Name:      fullName,
 		Slot:      slot,
@@ -421,7 +416,6 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 			p["cache"] = true
 		}
 		p["host"] = fmt.Sprintf("%s-api.mattjarrett.dev", slot)
-		p["tlsSecret"] = slot + "-tls"
 		p["readinessCheckPath"] = "/readyz"
 		for _, f := range existingFiles {
 			base := strings.TrimSuffix(f, ".yaml")
@@ -440,7 +434,6 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 	case "Spa":
 		p["image"] = image
 		p["host"] = fmt.Sprintf("%s.mattjarrett.dev", slot)
-		p["tlsSecret"] = slot + "-tls"
 		// hello-world-spa uses inline <style>/<script> and fetches the companion API
 		// on a different subdomain - relax CSP accordingly.
 		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"

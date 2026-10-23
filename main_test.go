@@ -203,20 +203,6 @@ func TestRenderResource_Spa(t *testing.T) {
 	}
 }
 
-func TestRenderResource_Spa_DefaultTLSIssuer(t *testing.T) {
-	yaml, err := RenderResource(writeRequest{
-		Kind:   "Spa",
-		Name:   "my-spa",
-		Params: map[string]any{"image": "foo:latest", "host": "spa.example.com", "namespace": "dev"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(yaml, `tlsIssuer: "letsencrypt-prod"`) {
-		t.Errorf("expected default tlsIssuer in rendered YAML:\n%s", yaml)
-	}
-}
-
 func TestRenderResource_Api_OptionalHost(t *testing.T) {
 	yaml, err := RenderResource(writeRequest{
 		Kind:   "Api",
@@ -271,31 +257,13 @@ func TestRenderNamespace(t *testing.T) {
 }
 
 func TestRenderGuestNamespace(t *testing.T) {
-	out := RenderGuestNamespace("guest-phantom-burrito", "demo3")
+	out := RenderGuestNamespace("guest-phantom-burrito")
 
 	for _, want := range []string{
 		"name: guest-phantom-burrito",
-		"launchpad.local.lab/slot: demo3",
 		`platform.local.lab/workloads: "true"`,
 		"istio-injection: enabled",
 		`argocd.argoproj.io/sync-wave: "-1"`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("missing %q in:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "kind: RoleBinding") {
-		t.Errorf("RoleBinding belongs in rbac.yaml, not namespace.yaml:\n%s", out)
-	}
-}
-
-func TestRenderGuestRBAC(t *testing.T) {
-	out := RenderGuestRBAC("guest-phantom-burrito")
-
-	for _, want := range []string{
-		"kind: RoleBinding",
-		"name: secret-mirror-writer",
-		"namespace: guest-phantom-burrito",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)

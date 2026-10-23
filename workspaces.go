@@ -22,7 +22,7 @@ var validWorkspaceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^
 // these, so a new scaffolding file has to be added here too.
 func isInfraFile(name string) bool {
 	switch name {
-	case "namespace.yaml", "rbac.yaml", "guest.yaml":
+	case "namespace.yaml", "guest.yaml":
 		return true
 	}
 	return false
@@ -313,7 +313,7 @@ func (a *app) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		// Deliberately not isInfraFile: this path removes namespace.yaml alone, so
 		// any other file left behind would be orphaned. Guest workspaces carry
-		// rbac.yaml and guest.yaml and are torn down by the guest cleanup instead.
+		// guest.yaml and are torn down by the guest cleanup instead.
 		if e.Type == "file" && e.Name != "namespace.yaml" {
 			http.Error(w, "workspace is not empty", http.StatusConflict)
 			return

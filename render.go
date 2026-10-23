@@ -69,48 +69,22 @@ metadata:
 
 // RenderGuestNamespace renders a guest sandbox namespace.
 //
-// The slot label is what secret-mirror-controller selects on - guests name their
-// own workspaces, so there is no pattern to match. The other two labels are what
-// admission policy reads; the ApplicationSet cannot set them, because
-// managedNamespaceMetadata only labels a namespace ArgoCD creates itself.
+// The labels are what admission policy reads; the ApplicationSet cannot set them,
+// because managedNamespaceMetadata only labels a namespace ArgoCD creates itself.
 //
 // The sync-wave puts the Namespace in the last prune wave. A namespace that
 // starts terminating while managed resources still hold finalizers deadlocks,
 // because the provider cannot recreate its ProviderConfigUsage there.
-func RenderGuestNamespace(name, slot string) string {
+func RenderGuestNamespace(name string) string {
 	return fmt.Sprintf(`apiVersion: v1
 kind: Namespace
 metadata:
   name: %[1]s
   labels:
-    launchpad.local.lab/slot: %[2]s
     platform.local.lab/workloads: "true"
     istio-injection: enabled
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
-`, name, slot)
-}
-
-// RenderGuestRBAC renders the RoleBinding that lets secret-mirror-controller
-// manage TLS Secrets inside a guest sandbox.
-//
-// secret-mirror-writer is full CRUD on Secrets, so it is bound per namespace
-// rather than cluster-wide: the controller gains it when a sandbox is created
-// and loses it when the sandbox is deleted.
-func RenderGuestRBAC(name string) string {
-	return fmt.Sprintf(`apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: secret-mirror-writer
-  namespace: %[1]s
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: secret-mirror-writer
-subjects:
-  - kind: ServiceAccount
-    name: secret-mirror-controller
-    namespace: secret-mirror-controller
 `, name)
 }
 
@@ -131,11 +105,6 @@ spec:
   parameters:
     image: {{ .Params.image | q }}
     host: {{ .Params.host | q }}
-{{- if .Params.tlsSecret }}
-    tlsSecret: {{ .Params.tlsSecret | q }}
-{{- else }}
-    tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" | q }}
-{{- end }}
     replicas: {{ or .Params.replicas 1 | q }}
 {{- if .Params.contentSecurityPolicy }}
     contentSecurityPolicy: {{ .Params.contentSecurityPolicy | q }}
@@ -159,11 +128,6 @@ spec:
     replicas: {{ or .Params.replicas 1 | q }}
 {{- if .Params.host }}
     host: {{ .Params.host | q }}
-{{- if .Params.tlsSecret }}
-    tlsSecret: {{ .Params.tlsSecret | q }}
-{{- else }}
-    tlsIssuer: {{ or .Params.tlsIssuer "letsencrypt-prod" | q }}
-{{- end }}
 {{- end }}
 {{- if .Params.sqlRef }}
     sqlRef:
