@@ -23,10 +23,9 @@ import (
 //   - US only
 //   - rounded to one decimal, about 11 km, before they are stored
 //   - no counts
-//   - refreshed once a day, so a pin can't be matched to the moment someone launched
 const (
-	sandboxPinsRefresh = 24 * time.Hour
-	sandboxPinsRetry   = 5 * time.Minute
+	sandboxPinsRefresh = 5 * time.Minute
+	sandboxPinsRetry   = time.Minute
 
 	sandboxSchema = `CREATE TABLE IF NOT EXISTS sandbox_launches (
 		launched_at timestamptz NOT NULL DEFAULT now(),
@@ -62,7 +61,7 @@ func (a *app) handleGuestLocations(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "locations unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "public, max-age=300")
 	writeJSON(w, pins)
 }
 
@@ -106,7 +105,7 @@ func (s *sandboxPins) record(r *http.Request) {
 	}()
 }
 
-// run refreshes the pins at startup and then daily, pruning launches older than a year.
+// run refreshes the pins at startup and then every few minutes, pruning launches older than a year.
 // A failed refresh keeps the last good pins and tries again sooner.
 func (s *sandboxPins) run(ctx context.Context) {
 	for {

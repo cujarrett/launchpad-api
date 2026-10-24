@@ -144,7 +144,7 @@ Guest workspaces are also capped at `guestMaxResources = 10` resources each. Add
 
 ### `locations.go` - The sandbox map
 
-`GET /api/guest/locations` serves the pins for the map on the Launchpad home page. Each US sandbox launch is written to the `sandbox_launches` table in launchpad-api's own `Sql`, using the location Cloudflare adds to the request. The write runs off the request path, so a slow database never delays a launch. Pins are rounded to one decimal place (about 11 km) before they are stored, and carry no counts. A background goroutine prunes launches older than 365 days and refreshes the pins at startup and then once a day, so a pin can't be matched to when someone launched and a request only ever reads memory. A failed refresh keeps the last good pins.
+`GET /api/guest/locations` serves the pins for the map on the Launchpad home page. Each US sandbox launch is written to the `sandbox_launches` table in launchpad-api's own `Sql`, using the location Cloudflare adds to the request. The write runs off the request path, so a slow database never delays a launch. Pins are rounded to one decimal place (about 11 km) before they are stored, and carry no counts. A background goroutine prunes launches older than 365 days and refreshes the pins at startup and then every 5 minutes, so a request only ever reads memory. A failed refresh keeps the last good pins.
 
 ### `watcher.go` - The eyes on the cluster
 
