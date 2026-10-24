@@ -176,6 +176,9 @@ spec:
 {{- if .Params.size }}
     size: {{ .Params.size | q }}
 {{- end }}
+{{- if .Params.storageSize }}
+    storageSize: {{ .Params.storageSize | q }}
+{{- end }}
 {{- if .Params.consumerServiceAccounts }}
     consumerServiceAccounts:
 {{- range .Params.consumerServiceAccounts }}

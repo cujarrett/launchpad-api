@@ -49,6 +49,8 @@ type app struct {
 	// Last good guest gauges, served while GitHub is unreachable.
 	metricsMu   sync.Mutex
 	metricsLast []byte
+
+	sandboxPins *sandboxPins
 }
 
 // lockGuestMeta returns a per-workspace mutex so concurrent phase updates to
@@ -140,6 +142,7 @@ func main() {
 		dynClient:     dynClient,
 		resourceCache: map[string]resourceCacheEntry{},
 		guestPhaseSem: make(chan struct{}, 4),
+		sandboxPins:   newSandboxPins(envOrDefault("SQL_BINDING_DIR", "/bindings/sql")),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -156,6 +159,7 @@ func main() {
 	go startPodWatcher(ctx, b, dynClient)
 	go a.startGuestCleanup(ctx)
 	go auth.tickets.startSweeper(ctx)
+	go a.sandboxPins.run(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/workspaces", a.handleListWorkspaces)
@@ -176,6 +180,7 @@ func main() {
 	mux.HandleFunc("GET /metrics", a.handleMetrics)
 	// Guest endpoints - no auth required; registered before the catch-all.
 	mux.HandleFunc("GET /api/guest/workspaces", a.handleListGuestWorkspaces)
+	mux.HandleFunc("GET /api/guest/locations", a.handleGuestLocations)
 	mux.HandleFunc("POST /api/guest/workspaces", a.handleCreateGuestWorkspace)
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources/batch", a.handleCreateGuestResourceBatch)
 	mux.HandleFunc("PATCH /api/guest/workspaces/{name}/resources/{resource}", a.handlePatchGuestResource)

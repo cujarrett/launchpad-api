@@ -19,6 +19,30 @@ func TestValidate_MissingKind(t *testing.T) {
 	}
 }
 
+func TestValidate_Sql_StorageSize(t *testing.T) {
+	cases := []struct {
+		name   string
+		params map[string]any
+		ok     bool
+	}{
+		{"private-cloud with size", map[string]any{"backend": "private-cloud", "storageSize": "1Gi"}, true},
+		{"default backend needs size", map[string]any{}, false},
+		{"bad size", map[string]any{"storageSize": "1GB"}, false},
+		{"cap is allowed", map[string]any{"storageSize": "100Gi"}, true},
+		{"too big", map[string]any{"storageSize": "101Gi"}, false},
+		{"not whole gi", map[string]any{"storageSize": "512Mi"}, false},
+		{"public-cloud needs a size", map[string]any{"backend": "public-cloud"}, false},
+		{"public-cloud below 20Gi", map[string]any{"backend": "public-cloud", "storageSize": "10Gi"}, false},
+		{"public-cloud at 20Gi", map[string]any{"backend": "public-cloud", "storageSize": "20Gi"}, true},
+	}
+	for _, c := range cases {
+		err := validate(writeRequest{Kind: "Sql", Name: "foo-db", Params: c.params})
+		if (err == nil) != c.ok {
+			t.Errorf("%s: got %v", c.name, err)
+		}
+	}
+}
+
 func TestValidate_MissingName(t *testing.T) {
 	err := validate(writeRequest{Kind: "Api"})
 	if err == nil || !strings.Contains(err.Error(), "name is required") {

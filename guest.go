@@ -229,6 +229,7 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	a.guestListCacheAt = time.Now()
 	a.guestListCacheMu.Unlock()
 
+	a.sandboxPins.record(r)
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, created)
@@ -440,6 +441,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 	case "Sql":
 		p["backend"] = "private-cloud"
 		p["dataRetention"] = "delete"
+		p["storageSize"] = "1Gi"
 	case "NoSql":
 		p["dataRetention"] = "delete"
 	case "ObjectStorage":

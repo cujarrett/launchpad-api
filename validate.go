@@ -2,7 +2,13 @@ package main
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 )
+
+// Matches the Sql XRD's storageSize pattern, so a bad value fails here rather than at sync.
+var validStorageSize = regexp.MustCompile(`^([1-9][0-9]?|100)Gi$`)
 
 // writeRequest is the body POSTed by the Angular client.
 type writeRequest struct {
@@ -38,7 +44,18 @@ func validate(req writeRequest) error {
 		if err := requireFields(p, "image"); err != nil {
 			return err
 		}
-	case "Sql", "NoSql", "ObjectStorage":
+	case "Sql":
+		size, _ := p["storageSize"].(string)
+		if !validStorageSize.MatchString(size) {
+			return fmt.Errorf("storageSize is required, 1Gi to 100Gi")
+		}
+		// RDS will not allocate less than 20Gi.
+		if backend, _ := p["backend"].(string); backend == "public-cloud" {
+			if gi, _ := strconv.Atoi(strings.TrimSuffix(size, "Gi")); gi < 20 {
+				return fmt.Errorf("a public-cloud Sql needs storageSize of at least 20Gi")
+			}
+		}
+	case "NoSql", "ObjectStorage":
 		// no required fields beyond name
 	case "Topic":
 		if err := requireFields(p, "streamName", "subjects"); err != nil {
