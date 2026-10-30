@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.5
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/nats-io/nats.go v1.54.0
+	github.com/nats-io/nats.go v1.55.0
 	github.com/redis/go-redis/v9 v9.23.0
 )
 
