@@ -366,8 +366,10 @@ func extractPodStatus(obj *unstructured.Unstructured) *ResourceStatus {
 		initContainers = append(initContainers, ics)
 	}
 
-	// Only broadcast pods that have binding init containers (i.e. Api pods).
-	if len(initContainers) == 0 {
+	// Api pods with bindings feed the rollout steps.
+	// Workflow workers feed the demo's worker cards, so a guest sees one go offline.
+	isWorker := obj.GetLabels()["platform.local.lab/uses-workflow"] == "true"
+	if len(initContainers) == 0 && !isWorker {
 		return nil
 	}
 
