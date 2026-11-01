@@ -55,6 +55,7 @@ var watchedResources = []xrResource{
 	{"graphapis", "GraphApi"},
 	{"federatedgraphs", "FederatedGraph"},
 	{"managedsecrets", "ManagedSecret"},
+	{"workflows", "Workflow"},
 }
 
 // pluralForKind is the one lookup from kind to resource name, so a new kind

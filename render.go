@@ -19,6 +19,7 @@ func init() {
 		"Topic":         topicTemplate,
 		"Subscription":  subscriptionTemplate,
 		"Wordpress":     wordpressTemplate,
+		"Workflow":      workflowTemplate,
 	}
 	for kind, tmpl := range defs {
 		templates[kind] = template.Must(template.New(kind).Funcs(template.FuncMap{"q": quote}).Parse(tmpl))
@@ -162,6 +163,10 @@ spec:
 {{- if .Params.readinessCheckPath }}
     readinessCheckPath: {{ .Params.readinessCheckPath | q }}
 {{- end }}
+{{- if .Params.workflowRef }}
+    workflowRef:
+      name: {{ .Params.workflowRef | q }}
+{{- end }}
 `
 
 const sqlTemplate = `apiVersion: platform.local.lab/v1alpha1
@@ -268,5 +273,19 @@ spec:
 {{- end }}
 {{- if .Params.dbStorageSize }}
     dbStorageSize: {{ .Params.dbStorageSize | q }}
+{{- end }}
+`
+
+const workflowTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: Workflow
+metadata:
+  name: {{ .Name | q }}
+  namespace: {{ .Params.namespace | q }}
+spec:
+  parameters:
+    # Temporal keeps closed workflows at least a day. The sandbox is gone long before.
+    retention: "24h"
+{{- if .Params.description }}
+    description: {{ .Params.description | q }}
 {{- end }}
 `
