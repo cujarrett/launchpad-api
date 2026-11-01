@@ -342,7 +342,9 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 		plan = append(plan, "Spa")
 	case "Workflow":
 		// The demo-workflow image runs as the Api, so the pair is the whole demo.
+		// It takes no add-ons, whatever the request asked for.
 		plan = []string{"Workflow", "Api"}
+		req.WithCache, req.WithSql = false, false
 	}
 
 	if resourceCount+len(plan) > guestMaxResources {
