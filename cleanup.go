@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -108,6 +109,33 @@ func (c *cleanupActivities) SweepGuests(ctx context.Context) error {
 		return errors.New("guest sweep: could not handle " + strings.Join(failed, ", "))
 	}
 	return nil
+}
+
+// handleGuestCleanup shows a guest the real workflow that will delete their sandbox.
+func (a *app) handleGuestCleanup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !isGuestName(name) {
+		http.Error(w, "not a guest workspace", http.StatusForbidden)
+		return
+	}
+	if a.temporal == nil {
+		http.Error(w, "cleanup is off", http.StatusServiceUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	desc, err := a.temporal.DescribeWorkflowExecution(ctx, cleanupWorkflowID(name), "")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	info := desc.GetWorkflowExecutionInfo()
+	writeJSON(w, map[string]string{
+		"workflowId": cleanupWorkflowID(name),
+		"namespace":  envOrDefault("TEMPORAL_NAMESPACE", "default"),
+		"status":     strings.ToLower(strings.TrimPrefix(info.GetStatus().String(), "WORKFLOW_EXECUTION_STATUS_")),
+		"startedAt":  info.GetStartTime().AsTime().UTC().Format(time.RFC3339),
+	})
 }
 
 // startCleanup starts a sandbox's cleanup workflow. If one is already running, it is kept.

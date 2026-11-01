@@ -28,12 +28,14 @@ type InitContainerStatus struct {
 // ResourceStatus is broadcast to SSE clients.
 // Kind "Pod" carries init container binding status; all other kinds are XR status.
 type ResourceStatus struct {
-	Workspace      string                `json:"workspace"`
-	Kind           string                `json:"kind"`
-	Name           string                `json:"name"`
-	Synced         bool                  `json:"synced"`
-	Ready          bool                  `json:"ready"`
-	Message        string                `json:"message,omitempty"`
+	Workspace string `json:"workspace"`
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Synced    bool   `json:"synced"`
+	Ready     bool   `json:"ready"`
+	Message   string `json:"message,omitempty"`
+	// Composed is the kind of each resource the platform made for this XR.
+	Composed       []string              `json:"composed,omitempty"`
 	InitContainers []InitContainerStatus `json:"initContainers,omitempty"`
 }
 
@@ -229,7 +231,23 @@ func extractStatus(obj *unstructured.Unstructured, kind string) *ResourceStatus 
 		Synced:    synced,
 		Ready:     ready,
 		Message:   message,
+		Composed:  composedKinds(obj),
 	}
+}
+
+// composedKinds lists what Crossplane made for an XR. Names are left out, because they
+// carry generated IDs a guest has no use for.
+func composedKinds(obj *unstructured.Unstructured) []string {
+	refs, _, _ := unstructured.NestedSlice(obj.Object, "spec", "crossplane", "resourceRefs")
+	kinds := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if m, ok := r.(map[string]interface{}); ok {
+			if k, _ := m["kind"].(string); k != "" {
+				kinds = append(kinds, k)
+			}
+		}
+	}
+	return kinds
 }
 
 // startPodWatcher watches pods across all guest-* namespaces and broadcasts

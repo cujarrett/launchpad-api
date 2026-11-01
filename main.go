@@ -194,6 +194,7 @@ func main() {
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources/batch", a.handleCreateGuestResourceBatch)
 	mux.HandleFunc("PATCH /api/guest/workspaces/{name}/resources/{resource}", a.handlePatchGuestResource)
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/phases", a.handleRecordGuestPhase)
+	mux.HandleFunc("GET /api/guest/workspaces/{name}/cleanup", a.handleGuestCleanup)
 	mux.Handle("/", auth.requireAuth(api))
 
 	srv := &http.Server{

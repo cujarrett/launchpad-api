@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -341,5 +342,19 @@ func TestIsGuestName(t *testing.T) {
 		if got := isGuestName(name); got != want {
 			t.Errorf("isGuestName(%q) = %v, want %v", name, got, want)
 		}
+	}
+}
+
+func TestExtractStatus_ComposedKinds(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "foo-api", "namespace": "guest-foo"},
+		"spec": map[string]any{"crossplane": map[string]any{"resourceRefs": []any{
+			map[string]any{"kind": "Deployment", "name": "foo-api"},
+			map[string]any{"kind": "RoleAssignment", "name": "xp-123"},
+		}}},
+	}}
+	got := extractStatus(obj, "Api").Composed
+	if len(got) != 2 || got[0] != "Deployment" || got[1] != "RoleAssignment" {
+		t.Fatalf("got %v, want [Deployment RoleAssignment]", got)
 	}
 }
