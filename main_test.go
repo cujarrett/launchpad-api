@@ -375,3 +375,16 @@ func TestGuestListAllowsAnyOrigin(t *testing.T) {
 		t.Fatalf("Access-Control-Allow-Origin = %q, want *", got)
 	}
 }
+
+func TestScrubMessage(t *testing.T) {
+	in := `cannot create: AccessDenied: User: arn:aws:sts::123456789012:assumed-role/xp-abc/s is not authorized, account 123456789012, tenant 7f4c1900-e63c-456b-ab5f-898189b24ec4`
+	got := scrubMessage(in)
+	for _, leak := range []string{"123456789012", "assumed-role", "7f4c1900"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("message still contains %q: %s", leak, got)
+		}
+	}
+	if !strings.Contains(got, "AccessDenied") || !strings.Contains(got, "is not authorized") {
+		t.Errorf("message lost its meaning: %s", got)
+	}
+}

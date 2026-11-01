@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -232,9 +233,25 @@ func extractStatus(obj *unstructured.Unstructured, kind string) *ResourceStatus 
 		Name:      obj.GetName(),
 		Synced:    synced,
 		Ready:     ready,
-		Message:   message,
+		Message:   scrubMessage(message),
 		Composed:  composedKinds(obj),
 	}
+}
+
+// The status stream is public, and cloud errors quote the resources they failed on.
+// These patterns blank what would help someone aim at the account.
+var (
+	arnPattern       = regexp.MustCompile(`arn:aws[a-z-]*:[^\s"',)]*`)
+	guidPattern      = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+	accountIDPattern = regexp.MustCompile(`\b\d{12}\b`)
+)
+
+// scrubMessage removes AWS ARNs, account IDs and Entra IDs from an error message.
+// The rest stays, so a guest still sees why a resource is not ready.
+func scrubMessage(msg string) string {
+	msg = arnPattern.ReplaceAllString(msg, "arn:(hidden)")
+	msg = guidPattern.ReplaceAllString(msg, "(id hidden)")
+	return accountIDPattern.ReplaceAllString(msg, "(account hidden)")
 }
 
 // composedKinds lists what Crossplane made for an XR. Names are left out, because they
