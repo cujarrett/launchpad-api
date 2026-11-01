@@ -371,9 +371,9 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 	for _, kind := range plan {
 		var guestImage string
 		if kind == "Spa" {
-			guestImage = envOrDefault("GUEST_SPA_IMAGE", "ghcr.io/cujarrett/hello-world-spa:latest")
+			guestImage = envOrDefault("GUEST_SPA_IMAGE", "ghcr.io/cujarrett/demo-spa:latest")
 		} else {
-			guestImage = envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
+			guestImage = envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/demo-api:latest")
 		}
 		resourceName := names[kind]
 		wr := writeRequest{
@@ -442,7 +442,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 	case "Spa":
 		p["image"] = image
 		p["host"] = fmt.Sprintf("%s.mattjarrett.dev", slot)
-		// hello-world-spa uses inline <style>/<script> and fetches the companion API
+		// demo-spa uses inline <style>/<script> and fetches the companion API
 		// on a different subdomain - relax CSP accordingly.
 		p["contentSecurityPolicy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.mattjarrett.dev; frame-ancestors 'none'; base-uri 'self';"
 	case "Sql":
@@ -537,7 +537,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	guestImage := envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/hello-world-api:latest")
+	guestImage := envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/demo-api:latest")
 	wr := writeRequest{
 		Workspace: workspaceName,
 		Kind:      "Api",

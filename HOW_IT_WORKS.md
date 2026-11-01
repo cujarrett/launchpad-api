@@ -142,7 +142,7 @@ Guest resources are limited to `allowedGuestKinds`: Api, Spa, Sql, NoSql, Object
 
 Guest workspaces are also capped at `guestMaxResources = 10` resources each. Add-on resources for an existing workspace (`POST /api/guest/workspaces/{name}/resources/batch`) are all created in one `upsertFilesAtomic` commit - see `write.go`.
 
-`buildGuestParams` auto-generates all resource parameters so guests don't fill out forms. For Spa, it uses `GUEST_SPA_IMAGE` (default `ghcr.io/cujarrett/hello-world-spa:latest`). For Api, it uses `GUEST_API_IMAGE` (default `ghcr.io/cujarrett/hello-world-api:latest`) and derives the public host from the assigned slot.
+`buildGuestParams` auto-generates all resource parameters so guests don't fill out forms. For Spa, it uses `GUEST_SPA_IMAGE` (default `ghcr.io/cujarrett/demo-spa:latest`). For Api, it uses `GUEST_API_IMAGE` (default `ghcr.io/cujarrett/demo-api:latest`) and derives the public host from the assigned slot.
 
 **Key symbols**: `guestTTL = 10 * time.Minute`, `guestMaxCount = 5`, `allowedGuestKinds`, `guestWords1`, `guestWords2`, `guestSlots`, `SandboxCleanupWorkflow`, `GuestSweepWorkflow`, `buildGuestParams`, `loadGuestWorkspaces`, `copyDemoTLSSecretsWhenReady`, `persistGuestPhase`, `staleGuestSweepThreshold`
 
@@ -180,52 +180,12 @@ Five recipes: `ci` chains `lint → test → build`. `lint` runs `go mod tidy -d
 
 ---
 
-## hello-world-api
+## Sample apps
 
-A demo API deployed inside guest Api workspaces - the thing that actually runs at `demo3-api.mattjarrett.dev`.
+Guest sandboxes run sample images that live in their own repos.
 
-### `hello-world-api/main.go`
-
-Three routes: `GET /healthz` (200 OK), `GET /readyz` (readiness probe - 503 while any wired integration is still `starting`), and `GET /` which returns integration status JSON. The response shape is `{ integrations: [...] }`.
-
-Integration status is determined by probing at request time. `readBinding(root, name)` loads the servicebinding.io files under `/bindings/{name}/`; a missing directory reports `not_configured` (the SPA hides the card). Every probe performs a real round-trip, not a presence check - statuses are `ok`, `starting` (binding present, backend or credentials not ready yet), `error`, or `not_configured`.
-
-The six probes:
-
-- **SQL Database** (`/bindings/sql/`) - private-cloud bindings (a `password` key) do a create/insert/count round-trip on Postgres. Public-cloud bindings (a `role-arn` key, RDS IAM auth) verify STS credentials via the `sql` profile, generate an RDS auth token, and attempt a short connect - the endpoint is VPC-internal, so a timeout still reports `ok` with an identity-verified detail.
-- **Cache** (`/bindings/cache/`) - private-cloud does an INCR round-trip on Redis. Public-cloud (ElastiCache, always VPC-internal) verifies STS credentials via the `cache` profile and attempts a short TLS connect.
-- **NoSQL Database** (`/bindings/nosql/`) - PutItem → GetItem → DeleteItem on the DynamoDB table using the `nosql` credentials profile.
-- **Object Storage** (`/bindings/object-storage-<ref-name>/`) - PutObject → GetObject → DeleteObject in every bound bucket, one credentials profile per mount.
-- **Topic** (gated on `NATS_STREAM` env) - publishes a message to the bound JetStream stream.
-- **Subscription** (gated on `NATS_CONSUMER` env) - publishes a uniquely-tagged message, then pull-fetches through the durable consumer until it arrives: a full stream → cursor → delivery round-trip.
-
-AWS probes use the shared credentials file written by the `aws-credentials-sidecar` (`AWS_SHARED_CREDENTIALS_FILE`); the profile name always equals the binding directory name, so no `AWS_PROFILE_*` env-var lookup is needed. A binding whose profile section hasn't been written yet reports `starting`.
-
-`Access-Control-Allow-Origin: *` is set on `GET /` so the sibling SPA can fetch from it cross-origin.
-
-**Key symbols**: `integrationStatus { Name, Status, Detail string }`, `readBinding`, `hasProfile`, `checkIntegrations`
-
-### `hello-world-api/Dockerfile`
-
-Multi-stage Go build. Same pattern as the main API: builder stage compiles, runtime stage is distroless non-root.
-
----
-
-## hello-world-spa
-
-A static single-page demo app deployed inside guest Spa workspaces - what shows at `demo3.mattjarrett.dev`.
-
-### `hello-world-spa/index.html`
-
-No framework, no build step - one HTML file served by nginx. On load, derives the sibling API URL from its own hostname by replacing `demo3.` with `demo3-api.` via a regex replace: `hostname.replace(...)`.
-
-Polls `GET /` on the API every 5 seconds with `fetch`. Renders one card per returned integration and shows the full API response JSON below the cards. Cards are colored by status: green border for `ok`, muted styling for `not_configured`.
-
-It asks one question: "which integrations does this sandbox have?" and shows the answer in real time as you add or remove resources.
-
-### `hello-world-spa/Dockerfile`
-
-`FROM nginx:alpine`, copies `index.html` to `/usr/share/nginx/html/`. Three lines. Exposes port 80.
+- [demo-api](https://github.com/cujarrett/demo-api): the Api at `demo{n}-api.mattjarrett.dev`. It probes every attached binding with a real round-trip.
+- [demo-spa](https://github.com/cujarrett/demo-spa): the Spa at `demo{n}.mattjarrett.dev`. It shows what the demo-api reported.
 
 ---
 

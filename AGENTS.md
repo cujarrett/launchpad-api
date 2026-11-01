@@ -5,7 +5,6 @@
 - **Never run `git commit`, `git push`, or any git command that writes to or modifies repository history or remotes.** If a task requires committing or pushing, stop and tell the user to run the git command manually.
 - **Never add a `Co-Authored-By` trailer or a "Generated with Claude Code" line** to commit messages or PR descriptions, including in suggested commit messages. Commits are authored by the user alone.
 - Standard library first. Add a dependency only when it is the official client for something the app talks to, such as client-go, pgx, or the Temporal and Azure SDKs.
-- Demo images in their own folders, such as `hello-temporal/`, have their own `go.mod`.
 - Do not use global variables - put state on the `app` struct.
 - Do not call `os.Getenv` inside handlers - read config once in `main()`.
 - Keep all application code in `main.go` and all tests in `main_test.go` unless the file grows large enough to warrant splitting.
