@@ -116,7 +116,7 @@ func main() {
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	// The platform mounts secretsFrom Secrets at /secrets/<secret>/<key>.
+	// The platform mounts the launchpad-github-token ManagedSecret at /secrets/<name>/<key>.
 	ghTokenFile := envOrDefault("GITHUB_TOKEN_FILE", "/secrets/launchpad-github-token/GITHUB_TOKEN")
 	gh := newGithubClient(
 		envOrDefault("GITHUB_TOKEN", ""),
