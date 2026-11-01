@@ -320,6 +320,10 @@ func TestRenderGuestNamespace(t *testing.T) {
 	for _, want := range []string{
 		"name: guest-phantom-burrito",
 		`platform.local.lab/workloads: "true"`,
+		// The render check refuses a namespace without these.
+		"pod-security.kubernetes.io/enforce: restricted",
+		"pod-security.kubernetes.io/warn: restricted",
+		"pod-security.kubernetes.io/audit: restricted",
 		"istio-injection: enabled",
 		`argocd.argoproj.io/sync-wave: "-1"`,
 	} {

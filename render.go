@@ -62,6 +62,9 @@ metadata:
   name: %[1]s
   labels:
     platform.local.lab/workloads: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
     istio-injection: enabled
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
@@ -83,6 +86,9 @@ metadata:
   name: %[1]s
   labels:
     platform.local.lab/workloads: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
     istio-injection: enabled
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
