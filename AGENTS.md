@@ -4,7 +4,8 @@
 
 - **Never run `git commit`, `git push`, or any git command that writes to or modifies repository history or remotes.** If a task requires committing or pushing, stop and tell the user to run the git command manually.
 - **Never add a `Co-Authored-By` trailer or a "Generated with Claude Code" line** to commit messages or PR descriptions, including in suggested commit messages. Commits are authored by the user alone.
-- Do not add external dependencies - stdlib only.
+- Standard library first. Add a dependency only when it is the official client for something the app talks to, such as client-go, pgx, or the Temporal and Azure SDKs.
+- Demo images in their own folders, such as `hello-temporal/`, have their own `go.mod`.
 - Do not use global variables - put state on the `app` struct.
 - Do not call `os.Getenv` inside handlers - read config once in `main()`.
 - Keep all application code in `main.go` and all tests in `main_test.go` unless the file grows large enough to warrant splitting.
@@ -20,7 +21,7 @@ launchpad-api is the Go backend-for-frontend for the Launchpad UI. It reads and 
 
 ## Tech Stack
 
-- **Language**: Go 1.26, stdlib only - no external dependencies
+- **Language**: Go 1.27, standard library first
 - **Container**: Multi-stage Dockerfile, `linux/arm64`, non-root user
 - **CI/CD**: GitHub Actions → GHCR (`ghcr.io/cujarrett/launchpad-api`)
 - **Deployment**: Kubernetes via homelab Api Crossplane XR
@@ -41,6 +42,7 @@ All application code lives in the repo root - no subdirectories.
 | `watcher.go` | Kubernetes dynamic client watch loop, feeds the broadcaster |
 | `broadcaster.go` | Fan-out SSE broadcaster for `GET /api/status/watch` |
 | `validate.go` | Input validation for write requests |
+| `cleanup.go` | Guest sandbox cleanup on Temporal: a durable timer workflow per sandbox, and a sweep on a one-minute schedule |
 
 ## Architecture
 

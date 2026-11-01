@@ -229,6 +229,13 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 	a.guestListCacheAt = time.Now()
 	a.guestListCacheMu.Unlock()
 
+	// The cleanup timer starts now. If this fails, the next sweep starts it.
+	if a.temporal != nil {
+		if err := startCleanup(ctx, a.temporal, fullName, now.Add(guestTTL)); err != nil {
+			slog.Error("create guest workspace: start cleanup", "workspace", fullName, "err", err)
+		}
+	}
+
 	a.sandboxPins.record(r)
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
 	w.WriteHeader(http.StatusCreated)
@@ -765,27 +772,9 @@ func (a *app) loadGuestWorkspaces(ctx context.Context) ([]guestWorkspaceJSON, er
 	return result, nil
 }
 
-// startGuestCleanup runs a background loop that deletes expired guest workspaces.
-// It runs immediately on startup to catch workspaces that expired while the API
-// was offline, then ticks every minute.
-func (a *app) startGuestCleanup(ctx context.Context) {
-	a.cleanupExpiredGuests(ctx)
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			a.cleanupExpiredGuests(ctx)
-		}
-	}
-}
-
-// staleGuestSweepThreshold is how many consecutive cleanup ticks (~1/min) a
-// workspace can have a missing/unreadable guest.yaml before it's swept as a
-// leftover from a previously-interrupted delete, rather than skipped forever.
-// A workspace genuinely mid-creation resolves within seconds, not minutes.
+// staleGuestSweepThreshold is how many sweeps (a minute apart) a workspace can
+// have a missing or unreadable guest.yaml before it's removed as a leftover from an
+// interrupted delete. A workspace genuinely mid-creation resolves within seconds.
 const staleGuestSweepThreshold = 3
 
 func (a *app) recordStaleGuestMiss(name string) int {
@@ -804,50 +793,19 @@ func (a *app) clearStaleGuestMisses(name string) {
 	delete(a.staleGuestMisses, name)
 }
 
-func (a *app) cleanupExpiredGuests(ctx context.Context) {
-	entries, err := a.gh.listDir(ctx, "")
-	if err != nil {
-		slog.Error("guest cleanup: list root", "err", err)
-		return
-	}
-	for _, e := range entries {
-		if e.Type != "dir" || !strings.HasPrefix(e.Name, guestPrefix) {
-			continue
-		}
-		expiry := a.fetchGuestExpiry(ctx, e.Name)
-		if expiry == nil {
-			// guest.yaml missing or unreadable. Usually a workspace still mid-creation,
-			// but if this persists across several ticks it's a leftover directory from
-			// a delete that failed partway through - sweep whatever files remain.
-			if misses := a.recordStaleGuestMiss(e.Name); misses >= staleGuestSweepThreshold {
-				slog.Warn("guest cleanup: guest.yaml missing after repeated checks, sweeping leftover files", "workspace", e.Name, "misses", misses)
-				a.deleteGuestWorkspaceFiles(ctx, e.Name)
-				a.clearStaleGuestMisses(e.Name)
-				continue
-			}
-			slog.Warn("guest cleanup: could not read expiry, skipping", "workspace", e.Name)
-			continue
-		}
-		a.clearStaleGuestMisses(e.Name)
-		if time.Now().After(*expiry) {
-			slog.Info("guest cleanup: deleting expired workspace", "workspace", e.Name)
-			a.deleteGuestWorkspaceFiles(ctx, e.Name)
-		}
-	}
-}
-
 // deleteGuestWorkspaceFiles deletes every file in the guest workspace directory.
-// ArgoCD and Crossplane cascade from there. Each delete is retried a few times -
+// ArgoCD and Crossplane cascade from there. It runs as a Temporal activity, which
+// retries it until it succeeds. Each file delete is also retried a few times -
 // GitHub's contents API can briefly 404 the SHA lookup for a file that was just
 // listed, a read-after-write consistency hiccup rather than a real absence.
-func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
+func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) error {
 	defer a.invalidateWorkspacesCache()
 	defer a.forgetGuestMeta(name)
 
 	entries, err := a.gh.listDir(ctx, name)
 	if err != nil {
 		slog.Error("guest cleanup: list dir", "workspace", name, "err", err)
-		return
+		return err
 	}
 	// namespace.yaml goes last. Deleted any earlier, ArgoCD re-applies the namespace
 	// from CreateNamespace without its tracking annotation, and the app's cascade
@@ -875,10 +833,11 @@ func (a *app) deleteGuestWorkspaceFiles(ctx context.Context, name string) {
 		}
 	}
 	if !ok {
-		slog.Error("guest cleanup: workspace not fully cleaned, will retry next tick", "workspace", name)
-		return
+		// Temporal retries the whole delete.
+		return fmt.Errorf("guest cleanup: %s not fully cleaned", name)
 	}
 	slog.Info("guest cleanup: workspace cleaned", "workspace", name)
+	return nil
 }
 
 // generateGuestResourceName returns a name that is unique across the cluster.

@@ -43,7 +43,7 @@ Unauthenticated users get a sandbox - a 10-minute real workload against the real
 3. Commits `namespace.yaml` + XR YAML for each selected resource to GitHub
 4. Returns `{ name, expiresAt }` - the browser polls status over SSE
 
-A cleanup goroutine runs every minute, reads `guest.yaml` from each workspace directory, and deletes expired workspaces by removing their files from GitHub. ArgoCD propagates the deletion.
+Temporal deletes each sandbox when it expires. Creating a sandbox starts a cleanup workflow that sleeps until the expiry, then removes the sandbox's files from GitHub. ArgoCD propagates the deletion. A sweep on a one-minute Temporal schedule catches any sandbox without a cleanup workflow, and leftovers from an interrupted delete. Temporal runs on the platform's own `Workflow` offering.
 
 Guest resources share one SPIRE trust anchor and the same cluster but get isolated namespaces, scoped IAM roles, and independent service bindings.
 

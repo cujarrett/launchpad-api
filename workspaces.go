@@ -363,7 +363,7 @@ func (a *app) fetchGuestMeta(ctx context.Context, workspace string) guestMeta {
 	return guestMeta{expiry: &expiry, phaseTimes: phaseTimes, doneAt: doneAt}
 }
 
-// fetchGuestExpiry is a thin wrapper kept for the cleanup loop.
+// fetchGuestExpiry is a thin wrapper for the guest sweep.
 func (a *app) fetchGuestExpiry(ctx context.Context, workspace string) *time.Time {
 	return a.fetchGuestMeta(ctx, workspace).expiry
 }

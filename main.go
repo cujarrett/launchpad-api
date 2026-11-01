@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"go.temporal.io/sdk/client"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -51,6 +52,9 @@ type app struct {
 	metricsLast []byte
 
 	sandboxPins *sandboxPins
+
+	// temporal runs guest cleanup. Nil when TEMPORAL_ADDRESS is unset, as in local dev.
+	temporal client.Client
 }
 
 // lockGuestMeta returns a per-workspace mutex so concurrent phase updates to
@@ -157,7 +161,12 @@ func main() {
 
 	go startWatcher(ctx, b, dynClient)
 	go startPodWatcher(ctx, b, dynClient)
-	go a.startGuestCleanup(ctx)
+	tc, err := a.startCleanupWorker(ctx)
+	if err != nil {
+		slog.Error("temporal cleanup init failed", "err", err)
+		os.Exit(1)
+	}
+	a.temporal = tc
 	go auth.tickets.startSweeper(ctx)
 	go a.sandboxPins.run(ctx)
 
