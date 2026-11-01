@@ -122,8 +122,9 @@ func startCleanup(ctx context.Context, tc client.Client, workspace string, expir
 	return err
 }
 
-// startCleanupWorker connects to Temporal, runs the cleanup worker, and makes sure the sweep
-// schedule exists. It returns a nil client when Temporal is not configured, as in local dev.
+// startCleanupWorker connects to Temporal, starts the cleanup worker, and makes sure the sweep
+// schedule exists, both in the background. It returns a nil client when Temporal is not
+// configured, as in local dev. It fails only on bad configuration.
 func (a *app) startCleanupWorker(ctx context.Context) (client.Client, error) {
 	address := envOrDefault("TEMPORAL_ADDRESS", "")
 	if address == "" {
@@ -145,23 +146,35 @@ func (a *app) startCleanupWorker(ctx context.Context) (client.Client, error) {
 		return nil, err
 	}
 
-	acts := &cleanupActivities{app: a, temporal: tc}
-	w := worker.New(tc, cleanupQueue, worker.Options{})
-	w.RegisterWorkflow(SandboxCleanupWorkflow)
-	w.RegisterWorkflow(GuestSweepWorkflow)
-	w.RegisterActivityWithOptions(acts.DeleteGuestWorkspace, activity.RegisterOptions{Name: "DeleteGuestWorkspace"})
-	w.RegisterActivityWithOptions(acts.SweepGuests, activity.RegisterOptions{Name: "SweepGuests"})
-	if err := w.Start(); err != nil {
-		return nil, err
-	}
-	go func() {
-		<-ctx.Done()
-		w.Stop()
-		tc.Close()
-	}()
-
+	go runCleanupWorker(ctx, tc, &cleanupActivities{app: a, temporal: tc})
 	go ensureSweepSchedule(ctx, tc)
 	return tc, nil
+}
+
+// runCleanupWorker keeps retrying until the worker starts, so a Temporal outage never takes
+// the Launchpad UI down with it. Timers that came due meanwhile fire once the worker is back.
+func runCleanupWorker(ctx context.Context, tc client.Client, acts *cleanupActivities) {
+	for {
+		w := worker.New(tc, cleanupQueue, worker.Options{})
+		w.RegisterWorkflow(SandboxCleanupWorkflow)
+		w.RegisterWorkflow(GuestSweepWorkflow)
+		w.RegisterActivityWithOptions(acts.DeleteGuestWorkspace, activity.RegisterOptions{Name: "DeleteGuestWorkspace"})
+		w.RegisterActivityWithOptions(acts.SweepGuests, activity.RegisterOptions{Name: "SweepGuests"})
+		err := w.Start()
+		if err == nil {
+			slog.Info("guest cleanup worker started")
+			<-ctx.Done()
+			w.Stop()
+			tc.Close()
+			return
+		}
+		slog.Error("guest cleanup worker cannot reach Temporal, sandboxes will not expire until it does, retrying", "err", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
+		}
+	}
 }
 
 // ensureSweepSchedule creates the sweep schedule, retrying until Temporal answers.
