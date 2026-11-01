@@ -34,6 +34,8 @@ type ResourceStatus struct {
 	Synced    bool   `json:"synced"`
 	Ready     bool   `json:"ready"`
 	Message   string `json:"message,omitempty"`
+	// Deleted tells open pages to drop a pod. Without it a replaced pod lingers on screen.
+	Deleted bool `json:"deleted,omitempty"`
 	// Composed is the kind of each resource the platform made for this XR.
 	Composed       []string              `json:"composed,omitempty"`
 	InitContainers []InitContainerStatus `json:"initContainers,omitempty"`
@@ -237,15 +239,27 @@ func extractStatus(obj *unstructured.Unstructured, kind string) *ResourceStatus 
 
 // composedKinds lists what Crossplane made for an XR. Names are left out, because they
 // carry generated IDs a guest has no use for.
+// Cloud kinds are prefixed, so "AWS Role" and a Kubernetes "Role" read differently.
 func composedKinds(obj *unstructured.Unstructured) []string {
 	refs, _, _ := unstructured.NestedSlice(obj.Object, "spec", "crossplane", "resourceRefs")
 	kinds := make([]string, 0, len(refs))
 	for _, r := range refs {
-		if m, ok := r.(map[string]interface{}); ok {
-			if k, _ := m["kind"].(string); k != "" {
-				kinds = append(kinds, k)
-			}
+		m, ok := r.(map[string]interface{})
+		if !ok {
+			continue
 		}
+		k, _ := m["kind"].(string)
+		if k == "" {
+			continue
+		}
+		apiVersion, _ := m["apiVersion"].(string)
+		switch {
+		case strings.Contains(apiVersion, ".aws."):
+			k = "AWS " + k
+		case strings.Contains(apiVersion, ".azuread."):
+			k = "Entra " + k
+		}
+		kinds = append(kinds, k)
 	}
 	return kinds
 }
@@ -320,6 +334,7 @@ func watchPods(ctx context.Context, client dynamic.Interface, b *broadcaster) {
 				if event.Type == watch.Deleted {
 					ns := obj.GetNamespace()
 					if strings.HasPrefix(ns, "guest-") {
+						b.publish(ResourceStatus{Workspace: ns, Kind: "Pod", Name: obj.GetName(), Deleted: true})
 						b.evict(ns, "Pod", obj.GetName())
 					}
 					continue

@@ -349,12 +349,13 @@ func TestExtractStatus_ComposedKinds(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "foo-api", "namespace": "guest-foo"},
 		"spec": map[string]any{"crossplane": map[string]any{"resourceRefs": []any{
-			map[string]any{"kind": "Deployment", "name": "foo-api"},
-			map[string]any{"kind": "RoleAssignment", "name": "xp-123"},
+			map[string]any{"kind": "Deployment", "apiVersion": "apps/v1"},
+			map[string]any{"kind": "Role", "apiVersion": "iam.aws.m.upbound.io/v1beta1"},
+			map[string]any{"kind": "RoleAssignment", "apiVersion": "app.azuread.m.upbound.io/v1beta1"},
 		}}},
 	}}
-	got := extractStatus(obj, "Api").Composed
-	if len(got) != 2 || got[0] != "Deployment" || got[1] != "RoleAssignment" {
-		t.Fatalf("got %v, want [Deployment RoleAssignment]", got)
+	got := strings.Join(extractStatus(obj, "Api").Composed, ",")
+	if got != "Deployment,AWS Role,Entra RoleAssignment" {
+		t.Fatalf("got %s, want Deployment,AWS Role,Entra RoleAssignment", got)
 	}
 }
