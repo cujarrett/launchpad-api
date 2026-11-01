@@ -98,6 +98,9 @@ type guestWorkspaceJSON struct {
 
 // handleListGuestWorkspaces returns all live guest workspaces with expiry info.
 func (a *app) handleListGuestWorkspaces(w http.ResponseWriter, r *http.Request) {
+	// Sandbox pages on demo{n}.mattjarrett.dev read their own expiry from here for a countdown.
+	// The list is already public and sends no credentials, so any origin may read it.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	workspaces, err := a.loadGuestWorkspaces(r.Context())
 	if err != nil {
 		slog.Error("list guest workspaces", "err", err)

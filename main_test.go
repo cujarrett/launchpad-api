@@ -2,8 +2,11 @@ package main
 
 import (
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -361,5 +364,14 @@ func TestExtractStatus_ComposedKinds(t *testing.T) {
 	got := strings.Join(extractStatus(obj, "Api").Composed, ",")
 	if got != "Deployment,AWS Role,Entra RoleAssignment" {
 		t.Fatalf("got %s, want Deployment,AWS Role,Entra RoleAssignment", got)
+	}
+}
+
+func TestGuestListAllowsAnyOrigin(t *testing.T) {
+	a := &app{guestListCache: []guestWorkspaceJSON{}, guestListCacheAt: time.Now()}
+	rec := httptest.NewRecorder()
+	a.handleListGuestWorkspaces(rec, httptest.NewRequest(http.MethodGet, "/api/guest/workspaces", nil))
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want *", got)
 	}
 }
