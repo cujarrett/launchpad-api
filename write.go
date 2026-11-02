@@ -15,6 +15,9 @@ import (
 // Retries once on 409 (Conflict) by re-fetching the SHA, which handles the case
 // where currentSHA returned "" due to a transient GitHub error but the file exists.
 func (c *githubClient) upsertFile(ctx context.Context, path, message, content string) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", c.owner, c.repo, path)
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
 
@@ -66,6 +69,9 @@ func (c *githubClient) upsertFile(ctx context.Context, path, message, content st
 // deleteFile deletes a file from the GitHub repo.
 // SHA of the current file is required by the GitHub API.
 func (c *githubClient) deleteFile(ctx context.Context, path, message string) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", c.owner, c.repo, path)
 
 	sha := c.currentSHA(ctx, url)
@@ -122,38 +128,36 @@ type batchFile struct {
 // current tip rather than just re-attempting the ref update, because a tree
 // built against a stale base is itself invalid once the tip has moved.
 func (c *githubClient) upsertFilesAtomic(ctx context.Context, files []batchFile, message string) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	const branch = "main"
-	// GitHub's Git References API is inconsistent about singular vs. plural:
-	// GET is under "git/ref/{ref}" but PATCH (update) is under "git/refs/{ref}".
-	getRefURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/%s", c.owner, c.repo, branch)
+	// The branch read returns the tip commit and its tree in one round trip.
+	branchURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches/%s", c.owner, c.repo, branch)
 	updateRefURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/%s", c.owner, c.repo, branch)
 
-	const maxAttempts = 3
+	// Commits from outside this process, such as CI deploys, can still move main.
+	const maxAttempts = 5
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
 		}
 
-		var ref struct {
-			Object struct {
-				SHA string `json:"sha"`
-			} `json:"object"`
+		var tip struct {
+			Commit struct {
+				SHA    string `json:"sha"`
+				Commit struct {
+					Tree struct {
+						SHA string `json:"sha"`
+					} `json:"tree"`
+				} `json:"commit"`
+			} `json:"commit"`
 		}
-		if err := c.apiJSON(ctx, http.MethodGet, getRefURL, nil, &ref); err != nil {
-			return fmt.Errorf("get ref: %w", err)
+		if err := c.apiJSON(ctx, http.MethodGet, branchURL, nil, &tip); err != nil {
+			return fmt.Errorf("get branch: %w", err)
 		}
-		baseCommitSHA := ref.Object.SHA
-
-		var baseCommit struct {
-			Tree struct {
-				SHA string `json:"sha"`
-			} `json:"tree"`
-		}
-		commitURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/commits/%s", c.owner, c.repo, baseCommitSHA)
-		if err := c.apiJSON(ctx, http.MethodGet, commitURL, nil, &baseCommit); err != nil {
-			return fmt.Errorf("get base commit: %w", err)
-		}
+		baseCommitSHA := tip.Commit.SHA
 
 		treeEntries := make([]map[string]any, 0, len(files))
 		for _, f := range files {
@@ -169,7 +173,7 @@ func (c *githubClient) upsertFilesAtomic(ctx context.Context, files []batchFile,
 		}
 		treeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees", c.owner, c.repo)
 		if err := c.apiJSON(ctx, http.MethodPost, treeURL, map[string]any{
-			"base_tree": baseCommit.Tree.SHA,
+			"base_tree": tip.Commit.Commit.Tree.SHA,
 			"tree":      treeEntries,
 		}, &newTree); err != nil {
 			return fmt.Errorf("create tree: %w", err)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -18,6 +19,10 @@ type githubClient struct {
 	owner     string
 	repo      string
 	client    *http.Client
+
+	// Every write moves main, so concurrent writes make each other's commits stale.
+	// Phase records commit alongside sandbox creates, so writes take turns.
+	writeMu sync.Mutex
 
 	// 401s from GitHub, exported on /metrics so an expired or revoked token alerts.
 	authFailures atomic.Uint64
