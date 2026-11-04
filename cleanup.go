@@ -19,7 +19,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// Guest sandboxes are cleaned up by Temporal, on the platform's own Workflow offering.
+// Guest sandboxes are cleaned up by Temporal, on the platform's own WorkflowSpace offering.
 //
 // Per sandbox: SandboxCleanupWorkflow sleeps until the sandbox expires, then deletes it.
 // The timer is durable, so a launchpad-api restart neither loses nor delays it.

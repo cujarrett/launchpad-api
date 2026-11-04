@@ -268,7 +268,7 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if req.Kind != "Api" && req.Kind != "Spa" && req.Kind != "Workflow" {
+	if req.Kind != "Api" && req.Kind != "Spa" && req.Kind != "WorkflowSpace" {
 		http.Error(w, fmt.Sprintf("kind %q is not available in guest workspaces", req.Kind), http.StatusUnprocessableEntity)
 		return
 	}
@@ -340,10 +340,10 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 			plan = append(plan, "Api")
 		}
 		plan = append(plan, "Spa")
-	case "Workflow":
+	case "WorkflowSpace":
 		// The demo-workflow image runs as the Api, so the pair is the whole demo.
 		// It takes no add-ons, whatever the request asked for.
-		plan = []string{"Workflow", "Api"}
+		plan = []string{"WorkflowSpace", "Api"}
 		req.WithCache, req.WithSql = false, false
 	}
 
@@ -381,17 +381,17 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 		switch {
 		case kind == "Spa":
 			guestImage = envOrDefault("GUEST_SPA_IMAGE", "ghcr.io/cujarrett/demo-spa:latest")
-		case req.Kind == "Workflow":
+		case req.Kind == "WorkflowSpace":
 			guestImage = envOrDefault("GUEST_WORKFLOW_IMAGE", "ghcr.io/cujarrett/demo-workflow:latest")
 		default:
 			guestImage = envOrDefault("GUEST_IMAGE", "ghcr.io/cujarrett/demo-api:latest")
 		}
 		resourceName := names[kind]
 		params := buildGuestParams(workspaceName, wsSlot, resourceName, kind, guestImage, allFileNames, req.WithCache, req.WithSql)
-		if req.Kind == "Workflow" && kind == "Api" {
+		if req.Kind == "WorkflowSpace" && kind == "Api" {
 			// Two workers, so one can take over when the other is unplugged.
 			params["replicas"] = 2
-			params["workflowRef"] = names["Workflow"]
+			params["workflowSpaceRef"] = names["WorkflowSpace"]
 			// demo-workflow serves /healthz only.
 			delete(params, "readinessCheckPath")
 		}
@@ -472,7 +472,7 @@ func buildGuestParams(workspace, slot, name, kind, image string, existingFiles [
 		p["dataRetention"] = "delete"
 	case "ObjectStorage":
 		p["dataRetention"] = "delete"
-	case "Workflow":
+	case "WorkflowSpace":
 		p["description"] = "Launchpad sandbox " + workspace
 	case "Topic":
 		streamName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
@@ -558,7 +558,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 		}
 		// Re-rendering would swap the demo-workflow image for demo-api.
 		if strings.HasSuffix(e.Name, "-workflow.yaml") {
-			http.Error(w, "the Workflow demo's API takes no add-ons", http.StatusConflict)
+			http.Error(w, "the WorkflowSpace demo's API takes no add-ons", http.StatusConflict)
 			return
 		}
 	}
@@ -883,7 +883,7 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 		"Topic":         "topic",
 		"Subscription":  "sub",
 		"Wordpress":     "wordpress",
-		"Workflow":      "workflow",
+		"WorkflowSpace": "workflow",
 	}
 	suffix, ok := kindShortNames[kind]
 	if !ok {

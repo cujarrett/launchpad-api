@@ -19,7 +19,7 @@ func init() {
 		"Topic":         topicTemplate,
 		"Subscription":  subscriptionTemplate,
 		"Wordpress":     wordpressTemplate,
-		"Workflow":      workflowTemplate,
+		"WorkflowSpace": workflowSpaceTemplate,
 	}
 	for kind, tmpl := range defs {
 		templates[kind] = template.Must(template.New(kind).Funcs(template.FuncMap{"q": quote}).Parse(tmpl))
@@ -169,9 +169,9 @@ spec:
 {{- if .Params.readinessCheckPath }}
     readinessCheckPath: {{ .Params.readinessCheckPath | q }}
 {{- end }}
-{{- if .Params.workflowRef }}
-    workflowRef:
-      name: {{ .Params.workflowRef | q }}
+{{- if .Params.workflowSpaceRef }}
+    workflowSpaceRef:
+      name: {{ .Params.workflowSpaceRef | q }}
 {{- end }}
 `
 
@@ -282,8 +282,8 @@ spec:
 {{- end }}
 `
 
-const workflowTemplate = `apiVersion: platform.local.lab/v1alpha1
-kind: Workflow
+const workflowSpaceTemplate = `apiVersion: platform.local.lab/v1alpha1
+kind: WorkflowSpace
 metadata:
   name: {{ .Name | q }}
   namespace: {{ .Params.namespace | q }}

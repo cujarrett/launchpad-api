@@ -60,7 +60,7 @@ var watchedResources = []xrResource{
 	{"graphapis", "GraphApi"},
 	{"federatedgraphs", "FederatedGraph"},
 	{"managedsecrets", "ManagedSecret"},
-	{"workflows", "Workflow"},
+	{"workflowspaces", "WorkflowSpace"},
 }
 
 // pluralForKind is the one lookup from kind to resource name, so a new kind
@@ -399,7 +399,7 @@ func extractPodStatus(obj *unstructured.Unstructured) *ResourceStatus {
 	}
 
 	// Api pods with bindings feed the rollout steps.
-	// Workflow workers feed the demo's worker cards, so a guest sees one go offline.
+	// WorkflowSpace workers feed the demo's worker cards, so a guest sees one go offline.
 	isWorker := obj.GetLabels()["platform.local.lab/uses-workflow"] == "true"
 	if len(initContainers) == 0 && !isWorker {
 		return nil
