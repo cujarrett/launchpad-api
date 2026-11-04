@@ -204,8 +204,8 @@ func TestRenderResource_Api(t *testing.T) {
 func TestRenderResource_WorkflowSandbox(t *testing.T) {
 	wf, err := RenderResource(writeRequest{
 		Kind:   "WorkflowSpace",
-		Name:   "neon-volcano-workflow",
-		Params: buildGuestParams("guest-neon-volcano", "demo2", "neon-volcano-workflow", "WorkflowSpace", "", nil, false, false),
+		Name:   "neon-volcano-workflow-space",
+		Params: buildGuestParams("guest-neon-volcano", "demo2", "neon-volcano-workflow-space", "WorkflowSpace", "", nil, false, false),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -221,13 +221,13 @@ func TestRenderResource_WorkflowSandbox(t *testing.T) {
 		Name: "neon-volcano-api",
 		Params: map[string]any{
 			"image": "ghcr.io/cujarrett/demo-workflow:latest", "namespace": "guest-neon-volcano",
-			"replicas": 2, "workflowSpaceRef": "neon-volcano-workflow",
+			"replicas": 2, "workflowSpaceRef": "neon-volcano-workflow-space",
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"replicas: 2", "workflowSpaceRef:\n      name: \"neon-volcano-workflow\""} {
+	for _, want := range []string{"replicas: 2", "workflowSpaceRef:\n      name: \"neon-volcano-workflow-space\""} {
 		if !strings.Contains(api, want) {
 			t.Errorf("expected %q in rendered Api:\n%s", want, api)
 		}

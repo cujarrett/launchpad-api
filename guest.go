@@ -557,7 +557,7 @@ func (a *app) handlePatchGuestResource(w http.ResponseWriter, r *http.Request) {
 			fileNames = append(fileNames, e.Name)
 		}
 		// Re-rendering would swap the demo-workflow image for demo-api.
-		if strings.HasSuffix(e.Name, "-workflow.yaml") {
+		if strings.HasSuffix(e.Name, "-workflow-space.yaml") {
 			http.Error(w, "the WorkflowSpace demo's API takes no add-ons", http.StatusConflict)
 			return
 		}
@@ -883,7 +883,7 @@ func generateGuestResourceName(kind, workspaceName string, existing []ghEntry) (
 		"Topic":         "topic",
 		"Subscription":  "sub",
 		"Wordpress":     "wordpress",
-		"WorkflowSpace": "workflow",
+		"WorkflowSpace": "workflow-space",
 	}
 	suffix, ok := kindShortNames[kind]
 	if !ok {
