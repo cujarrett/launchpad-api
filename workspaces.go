@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -117,10 +118,20 @@ func (a *app) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	a.wsCacheMu.Lock()
-	a.wsCache = workspaces
-	a.wsCacheAt = time.Now()
-	a.wsCacheMu.Unlock()
+	// A sandbox with no expiry means its metadata read failed, such as a cancelled request.
+	// Caching that would hide its countdown from everyone until the cache expires.
+	complete := true
+	for _, ws := range workspaces {
+		if ws.IsGuest && ws.ExpiresAt == nil {
+			complete = false
+		}
+	}
+	if complete {
+		a.wsCacheMu.Lock()
+		a.wsCache = workspaces
+		a.wsCacheAt = time.Now()
+		a.wsCacheMu.Unlock()
+	}
 
 	writeJSON(w, workspaces)
 }
@@ -198,6 +209,7 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 	// Fetch file contents in parallel - each is a separate GitHub API call,
 	// and doing them serially made this endpoint take seconds per workspace.
 	parsed := make([]*resourceJSON, len(files))
+	var fetchFailed atomic.Bool
 	var wg sync.WaitGroup
 	for i, e := range files {
 		wg.Add(1)
@@ -206,6 +218,7 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 			content, err := a.gh.fileContent(r.Context(), entry.Path)
 			if err != nil {
 				slog.Warn("fetch file", "path", entry.Path, "err", err)
+				fetchFailed.Store(true)
 				return
 			}
 
@@ -239,6 +252,13 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 		}(i, e)
 	}
 	wg.Wait()
+
+	// A partial list reads as a sandbox with nothing built, and the page offers Build it again.
+	// It also never goes in the cache, so the next request tries GitHub again.
+	if fetchFailed.Load() {
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
 
 	resources := make([]resourceJSON, 0, len(parsed))
 	for _, r := range parsed {

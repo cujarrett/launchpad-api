@@ -140,15 +140,11 @@ Temporal runs guest cleanup (`cleanup.go`).
 
 Guest resources are limited to `allowedGuestKinds`: Api, Spa, Sql, NoSql, ObjectStorage, Topic. Wordpress is excluded because it's too heavy. Subscription is excluded because it requires a topic reference and would complicate the zero-input sandbox UX.
 
-Guest workspaces are also capped at `guestMaxResources = 10` resources each. Add-on resources for an existing workspace (`POST /api/guest/workspaces/{name}/resources/batch`) are all created in one `upsertFilesAtomic` commit - see `write.go`.
+Each guest workspace runs one demo. A second build in the same sandbox gets a 409. `POST /api/guest/workspaces/{name}/resources/batch` creates all of a demo's resources in one `upsertFilesAtomic` commit. See `write.go`.
 
 `buildGuestParams` auto-generates all resource parameters so guests don't fill out forms. For Spa, it uses `GUEST_SPA_IMAGE` (default `ghcr.io/cujarrett/demo-spa:latest`). For Api, it uses `GUEST_API_IMAGE` (default `ghcr.io/cujarrett/demo-api:latest`) and derives the public host from the assigned slot.
 
 **Key symbols**: `guestTTL = 10 * time.Minute`, `guestMaxCount = 5`, `allowedGuestKinds`, `guestWords1`, `guestWords2`, `guestSlots`, `SandboxCleanupWorkflow`, `GuestSweepWorkflow`, `buildGuestParams`, `loadGuestWorkspaces`, `copyDemoTLSSecretsWhenReady`, `persistGuestPhase`, `staleGuestSweepThreshold`
-
-### `locations.go` - The sandbox map
-
-`GET /api/guest/locations` serves the pins for the map on the Launchpad home page. Each US sandbox launch is written to the `sandbox_launches` table in launchpad-api's own `Sql`, using the location Cloudflare adds to the request. The write runs off the request path, so a slow database never delays a launch. Pins are rounded to one decimal place (about 11 km) before they are stored, and carry no counts. A background goroutine prunes launches older than 365 days and refreshes the pins at startup and then every 5 minutes, so a request only ever reads memory. A failed refresh keeps the last good pins.
 
 ### `watcher.go` - The eyes on the cluster
 

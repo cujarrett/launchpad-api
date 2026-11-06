@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -386,5 +387,65 @@ func TestScrubMessage(t *testing.T) {
 	}
 	if !strings.Contains(got, "AccessDenied") || !strings.Contains(got, "is not authorized") {
 		t.Errorf("message lost its meaning: %s", got)
+	}
+}
+
+// ───────────────────────────────────────────────
+// guest resource reads and builds
+// ───────────────────────────────────────────────
+
+// fakeContents answers GitHub Contents API requests by path, and 500s anything else.
+type fakeContents map[string]string
+
+func (f fakeContents) RoundTrip(r *http.Request) (*http.Response, error) {
+	path := strings.TrimPrefix(r.URL.Path, "/repos/foo/bar/contents/")
+	body, ok := f[path]
+	code := http.StatusOK
+	if !ok {
+		code, body = http.StatusInternalServerError, "{}"
+	}
+	return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+}
+
+func contentFile(content string) string {
+	return `{"content":"` + base64.StdEncoding.EncodeToString([]byte(content)) + `"}`
+}
+
+func TestListResources_FailedFetchIsAnErrorAndNotCached(t *testing.T) {
+	gh := newGithubClient("token", "", "foo", "bar")
+	gh.client.Transport = fakeContents{
+		"guest-foo-bar": `[{"name":"foo-api.yaml","path":"guest-foo-bar/foo-api.yaml","type":"file"}]`,
+	}
+	a := &app{gh: gh, resourceCache: map[string]resourceCacheEntry{}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/guest-foo-bar/resources", nil)
+	req.SetPathValue("name", "guest-foo-bar")
+	rec := httptest.NewRecorder()
+	a.handleListResources(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502 so the page can't read the sandbox as empty", rec.Code)
+	}
+	if _, cached := a.resourceCache["guest-foo-bar"]; cached {
+		t.Fatal("a failed read was cached")
+	}
+}
+
+func TestGuestBatch_RefusesASecondBuild(t *testing.T) {
+	createdAt := time.Now().UTC().Format(time.RFC3339)
+	gh := newGithubClient("token", "", "foo", "bar")
+	gh.client.Transport = fakeContents{
+		"guest-foo-bar":            `[{"name":"guest.yaml","type":"file"},{"name":"foo-api.yaml","type":"file"}]`,
+		"guest-foo-bar/guest.yaml": contentFile("createdAt: " + createdAt + "\nslot: demo1\n"),
+	}
+	a := &app{gh: gh}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/guest/workspaces/guest-foo-bar/resources/batch", strings.NewReader(`{"kind":"Api"}`))
+	req.SetPathValue("name", "guest-foo-bar")
+	rec := httptest.NewRecorder()
+	a.handleCreateGuestResourceBatch(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rec.Code)
 	}
 }

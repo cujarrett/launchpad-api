@@ -18,10 +18,9 @@ import (
 )
 
 const (
-	guestPrefix       = "guest-"
-	guestTTL          = 10 * time.Minute
-	guestMaxCount     = 5
-	guestMaxResources = 10
+	guestPrefix   = "guest-"
+	guestTTL      = 10 * time.Minute
+	guestMaxCount = 5
 	// A normal run records phases 0-4 and done, plus a reset per retry.
 	guestMaxPhaseWrites = 20
 )
@@ -239,7 +238,6 @@ func (a *app) handleCreateGuestWorkspace(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	a.sandboxPins.record(r)
 	slog.Info("created guest workspace", "name", fullName, "slot", slot)
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, created)
@@ -311,10 +309,11 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
-	resourceCount := 0
+	// Each sandbox runs one demo. Without this, a repeat build adds a second copy of everything.
 	for _, e := range entries {
 		if !isInfraFile(e.Name) {
-			resourceCount++
+			http.Error(w, "this sandbox already has its demo - reload to see it", http.StatusConflict)
+			return
 		}
 	}
 
@@ -345,11 +344,6 @@ func (a *app) handleCreateGuestResourceBatch(w http.ResponseWriter, r *http.Requ
 		// It takes no add-ons, whatever the request asked for.
 		plan = []string{"WorkflowSpace", "Api"}
 		req.WithCache, req.WithSql = false, false
-	}
-
-	if resourceCount+len(plan) > guestMaxResources {
-		http.Error(w, fmt.Sprintf("guest workspaces are limited to %d resources", guestMaxResources), http.StatusTooManyRequests)
-		return
 	}
 
 	// Generate a resource name for every planned kind up front, and collect the
