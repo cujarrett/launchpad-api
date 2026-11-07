@@ -91,6 +91,12 @@ curl http://localhost:8080/healthz
 | `GUEST_IMAGE` | no | Container image for guest API deployments |
 | `GUEST_SPA_IMAGE` | no | Container image for guest SPA deployments |
 
+To rotate the cluster's PAT, run this. It opens GitHub, prompts for the new value, checks it, then restarts the API.
+
+```bash
+~/Developer/homelab/scripts/github-token-rotate/github-token-rotate.sh
+```
+
 ## Deployment
 
 ARM64 image built by CI, pushed to GHCR and deployed to the homelab cluster by ArgoCD.
