@@ -267,9 +267,14 @@ func (a *app) handleListResources(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	a.resourceCacheMu.Lock()
-	a.resourceCache[name] = resourceCacheEntry{resources: resources, at: time.Now()}
-	a.resourceCacheMu.Unlock()
+	// GitHub can list a directory without its newest files for a moment after a commit.
+	// The page reads again 1.5s after a build to get past that.
+	// A cached empty list would answer that second read too.
+	if len(resources) > 0 {
+		a.resourceCacheMu.Lock()
+		a.resourceCache[name] = resourceCacheEntry{resources: resources, at: time.Now()}
+		a.resourceCacheMu.Unlock()
+	}
 
 	writeJSON(w, resources)
 }

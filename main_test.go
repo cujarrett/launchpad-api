@@ -431,6 +431,26 @@ func TestListResources_FailedFetchIsAnErrorAndNotCached(t *testing.T) {
 	}
 }
 
+func TestListResources_EmptyListIsNotCached(t *testing.T) {
+	gh := newGithubClient("token", "", "foo", "bar")
+	gh.client.Transport = fakeContents{
+		"guest-foo-bar": `[{"name":"guest.yaml","path":"guest-foo-bar/guest.yaml","type":"file"}]`,
+	}
+	a := &app{gh: gh, resourceCache: map[string]resourceCacheEntry{}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/workspaces/guest-foo-bar/resources", nil)
+	req.SetPathValue("name", "guest-foo-bar")
+	rec := httptest.NewRecorder()
+	a.handleListResources(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if _, cached := a.resourceCache["guest-foo-bar"]; cached {
+		t.Fatal("an empty list was cached, so a read just after a build stays empty")
+	}
+}
+
 func TestGuestBatch_RefusesASecondBuild(t *testing.T) {
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	gh := newGithubClient("token", "", "foo", "bar")
