@@ -4,11 +4,11 @@
 
 - **Never run `git commit`, `git push`, or any git command that writes to or modifies repository history or remotes.** If a task requires committing or pushing, stop and tell the user to run the git command manually.
 - **Never add a `Co-Authored-By` trailer or a "Generated with Claude Code" line** to commit messages or PR descriptions, including in suggested commit messages. Commits are authored by the user alone.
-- Standard library first. Add a dependency only when it is the official client for something the app talks to, such as client-go, pgx, or the Temporal and Azure SDKs.
-- Do not use global variables - put state on the `app` struct.
-- Do not call `os.Getenv` inside handlers - read config once in `main()`.
-- Keep all application code in `main.go` and all tests in `main_test.go` unless the file grows large enough to warrant splitting.
-- **Never include environment variable values, file contents, or internal paths in HTTP responses.** This includes error messages, debug output, and structured error bodies. launchpad-api runs with AWS credentials injected at `/aws-credentials/credentials` - any response that leaks file system contents or env var values is a credential exposure to public guests at `launchpad.mattjarrett.dev`.
+- Standard library first. Add a dependency only when it is the official client for something the app talks to, such as client-go or the Temporal and Azure SDKs.
+- Put state on the `app` struct, with no global variables.
+- Read config once in `main()`. Handlers never call `os.Getenv`.
+- Keep every Go file in the repo root, one file per concern. [Project Structure](#project-structure) lists them.
+- **Never include environment variable values, file contents, or internal paths in HTTP responses.** This includes error messages, debug output, and structured error bodies. launchpad-api runs with AWS credentials injected at `/aws-credentials/credentials`. Any response that leaks file system contents or env var values is a credential exposure to public guests at `launchpad.mattjarrett.dev`.
 
 ### Pre-commit safety check
 
@@ -27,7 +27,7 @@ launchpad-api is the Go backend-for-frontend for the Launchpad UI. It reads and 
 
 ## Project Structure
 
-All application code lives in the repo root - no subdirectories.
+All application code lives in the repo root, with no subdirectories.
 
 | File | Purpose |
 |---|---|
@@ -37,9 +37,11 @@ All application code lives in the repo root - no subdirectories.
 | `workspaces.go` | `GET /api/workspaces` and `GET /api/workspaces/{name}/resources` handlers |
 | `write.go` | `POST` and `DELETE` workspace/resource handlers |
 | `render.go` | YAML rendering from schema + user params |
-| `schema.go` | `GET /api/schema/{kind}` handler - returns JSON schema for a resource kind |
+| `schema.go` | `GET /api/schema/{kind}` handler, which returns the JSON schema for a resource kind |
 | `watcher.go` | Kubernetes dynamic client watch loop, feeds the broadcaster |
 | `broadcaster.go` | Fan-out SSE broadcaster for `GET /api/status/watch` |
+| `sse_ticket.go` | Short-lived, single-use tickets that let the browser open the SSE stream |
+| `guest.go` | Guest sandbox handlers under `/api/guest/` |
 | `validate.go` | Input validation for write requests |
 | `cleanup.go` | Guest sandbox cleanup on Temporal: a durable timer workflow per sandbox, and a sweep on a one-minute schedule |
 
@@ -66,35 +68,27 @@ The API is a thin stateless layer between the Launchpad SPA, GitHub, and Kuberne
 | `GET` | `/api/workspaces/{name}/resources/{resource}/values` | none | Get current values for a resource |
 | `GET` | `/api/schema/{kind}` | none | Get JSON schema for a resource kind |
 | `GET` | `/api/status/watch` | none (token optional) | SSE stream of live resource status |
+| `POST` | `/api/status/watch/ticket` | Bearer token | Trade the token for a single-use SSE ticket |
+| `GET` | `/metrics` | none | Prometheus metrics |
+| `GET`, `POST`, `PATCH` | `/api/guest/workspaces/...` | none, capped | Guest sandbox routes. The caps are in [README → Guest sandbox](./README.md#guest-sandbox) |
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `GITHUB_TOKEN` | in local dev | GitHub PAT with `contents: write` on `cujarrett/homelab-workspaces`. In the cluster the PAT is a mounted file instead. |
-| `GITHUB_TOKEN_FILE` | no | Path to the mounted PAT (default `/secrets/launchpad-github-token/GITHUB_TOKEN`) |
-| `ENTRA_TENANT_ID` | yes | Azure Entra ID tenant GUID |
-| `ENTRA_API_CLIENT_ID` | yes | Client ID of the API app registration (used as JWT audience) |
-| `PORT` | no | HTTP listen port (default `8080`) |
-| `GITHUB_OWNER` | no | GitHub org/user for the workspaces repo (default `cujarrett`) |
-| `GITHUB_REPO` | no | GitHub repo name for the workspaces repo (default `homelab-workspaces`) |
-| `ENTRA_AUTH_DISABLED` | no | Set to `true` to skip JWT validation in local dev - **never on port 443** |
+[README → Environment variables](./README.md#environment-variables) has the full table. `ENTRA_AUTH_DISABLED=true` skips JWT validation for local dev only.
 
 ## Coding Conventions
 
-- Stdlib only - do not add external dependencies to `go.mod`
-- No package-level globals - all state lives on the `app` struct
-- Read config once at startup, not per-request. The GitHub PAT is the exception: it is read from its mounted file on each call so a rotation needs no restart.
-- Fail fast: use `log.Fatal` at startup for missing required config
-- `defer func() { _ = resp.Body.Close() }()` - explicit discard for `errcheck`
-- All tests use `httptest.NewServer` / `httptest.NewRecorder` - no real network calls, no env var dependencies
+- The GitHub PAT is the one config value read on every call. It comes from its mounted file, so a rotation needs no restart.
+- Fail fast. Exit at startup when required config is missing.
+- `defer func() { _ = resp.Body.Close() }()` is the explicit discard that `errcheck` wants.
+- Tests use `httptest.NewServer` and `httptest.NewRecorder`, with no real network calls and no env var dependencies.
 
 ## Local Development
 
 ```bash
 # 1. Copy and review the example env file
 cp .env.example .env
-# GITHUB_TOKEN comes from ~/.secrets - source it or set it manually
+# GITHUB_TOKEN comes from ~/.secrets. Source it or set it by hand.
 # Set ENTRA_AUTH_DISABLED=true to skip Entra auth locally
 
 # 2. Run
@@ -109,12 +103,9 @@ Run `just ci` before pushing to catch lint and test failures early.
 
 ## CI/CD
 
-- **`test` job**: runs on all pushes and PRs - `go test ./...` then `go vet ./...`
-- **`build-and-push` job**: runs on `main` only after `test` passes - builds ARM64 Docker image and pushes to GHCR with `:main` and `:sha-<sha>` tags
-
-## Version
-
-Set at build time via `-ldflags="-X main.version=x.y.z"` in the Dockerfile. Defaults to `"dev"` when running locally with `go run`.
+- **`test` job**: runs on all pushes and PRs. `go test ./...` then `go vet ./...`.
+- **`build-and-push` job**: runs on `main` after `test` passes. Builds the ARM64 image and pushes it to GHCR with `:main` and `:sha-<sha>` tags.
+- **`deploy` job**: runs after `build-and-push`. Updates the image tag in `homelab-workspaces`.
 
 ## Philosophy: Grug-Brained Development
 
