@@ -47,6 +47,11 @@ type app struct {
 
 	guestPhaseSem chan struct{}
 
+	// Seconds from a guest's Build click to the whole demo ready, keyed by workspace.
+	// Keys are real sandboxes, so the map stays as small as the guest name list.
+	readyMu    sync.Mutex
+	readyTimes map[string]guestReady
+
 	// Last good guest gauges, served while GitHub is unreachable.
 	metricsMu   sync.Mutex
 	metricsLast []byte

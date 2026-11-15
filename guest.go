@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -698,6 +699,59 @@ func (a *app) persistGuestPhase(ctx context.Context, workspaceName, phase string
 	}
 	if err := a.gh.upsertFile(ctx, metaPath, msg, string(updated)); err != nil {
 		slog.Warn("record guest phase: upsert", "workspace", workspaceName, "phase", phase, "err", err)
+		return
+	}
+	if done {
+		a.recordGuestReady(ctx, workspaceName, raw.PhaseTimes["0"], raw.DoneAt)
+	}
+}
+
+type guestReady struct {
+	demo    string
+	seconds float64
+}
+
+// recordGuestReady keeps the time from the Build click (phase 0) to done.
+// The server stamps both times, so a browser cannot choose them.
+func (a *app) recordGuestReady(ctx context.Context, workspaceName, clickedAt, doneAt string) {
+	start, err1 := time.Parse(time.RFC3339, clickedAt)
+	end, err2 := time.Parse(time.RFC3339, doneAt)
+	if err1 != nil || err2 != nil || !end.After(start) {
+		return
+	}
+	entries, err := a.gh.listDir(ctx, workspaceName)
+	if err != nil {
+		slog.Warn("record guest ready: list workspace", "workspace", workspaceName, "err", err)
+		return
+	}
+	demo := "api"
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name, "-workflow-space.yaml") {
+			demo = "workflow"
+		}
+	}
+	a.readyMu.Lock()
+	defer a.readyMu.Unlock()
+	if a.readyTimes == nil {
+		a.readyTimes = map[string]guestReady{}
+	}
+	a.readyTimes[workspaceName] = guestReady{demo: demo, seconds: end.Sub(start).Seconds()}
+}
+
+// writeGuestReady writes one gauge per workspace that has finished a build.
+func (a *app) writeGuestReady(w io.Writer) {
+	a.readyMu.Lock()
+	defer a.readyMu.Unlock()
+	names := make([]string, 0, len(a.readyTimes))
+	for name := range a.readyTimes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	_, _ = fmt.Fprintf(w, "# HELP launchpad_guest_ready_seconds Seconds from a guest's Build click to the whole demo ready.\n"+
+		"# TYPE launchpad_guest_ready_seconds gauge\n")
+	for _, name := range names {
+		r := a.readyTimes[name]
+		_, _ = fmt.Fprintf(w, "launchpad_guest_ready_seconds{workspace=%q,demo=%q} %g\n", name, r.demo, r.seconds)
 	}
 }
 
@@ -929,6 +983,7 @@ func (a *app) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP launchpad_github_auth_failures_total GitHub API responses with status 401.\n"+
 		"# TYPE launchpad_github_auth_failures_total counter\n"+
 		"launchpad_github_auth_failures_total %d\n", a.gh.authFailures.Load())
+	a.writeGuestReady(w)
 
 	workspaces, err := a.loadGuestWorkspaces(ctx)
 	if err != nil {
