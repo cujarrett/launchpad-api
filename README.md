@@ -90,6 +90,7 @@ curl http://localhost:8080/healthz
 | `ENTRA_AUTH_DISABLED` | no | `true` to skip JWT validation - blocked on port 443 |
 | `GUEST_IMAGE` | no | Container image for guest API deployments |
 | `GUEST_SPA_IMAGE` | no | Container image for guest SPA deployments |
+| `LOKI_URL` | no | Loki base URL for the sandbox map pins (default `http://loki.monitoring.svc.cluster.local:3100`). For local dev, port-forward Loki and set `http://localhost:3100`. |
 
 To rotate the cluster's PAT, run this. It opens GitHub, prompts for the new value, checks it, then restarts the API.
 

@@ -56,6 +56,8 @@ type app struct {
 	metricsMu   sync.Mutex
 	metricsLast []byte
 
+	sandboxPins *sandboxPins
+
 	// temporal runs guest cleanup. Nil when TEMPORAL_ADDRESS is unset, as in local dev.
 	temporal client.Client
 }
@@ -149,6 +151,7 @@ func main() {
 		dynClient:     dynClient,
 		resourceCache: map[string]resourceCacheEntry{},
 		guestPhaseSem: make(chan struct{}, 4),
+		sandboxPins:   newSandboxPins(envOrDefault("LOKI_URL", "http://loki.monitoring.svc.cluster.local:3100")),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -170,6 +173,7 @@ func main() {
 	}
 	a.temporal = tc
 	go auth.tickets.startSweeper(ctx)
+	go a.sandboxPins.run(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/workspaces", a.handleListWorkspaces)
@@ -190,6 +194,7 @@ func main() {
 	mux.HandleFunc("GET /metrics", a.handleMetrics)
 	// Guest endpoints - no auth required; registered before the catch-all.
 	mux.HandleFunc("GET /api/guest/workspaces", a.handleListGuestWorkspaces)
+	mux.HandleFunc("GET /api/guest/locations", a.handleGuestLocations)
 	mux.HandleFunc("POST /api/guest/workspaces", a.handleCreateGuestWorkspace)
 	mux.HandleFunc("POST /api/guest/workspaces/{name}/resources/batch", a.handleCreateGuestResourceBatch)
 	mux.HandleFunc("PATCH /api/guest/workspaces/{name}/resources/{resource}", a.handlePatchGuestResource)

@@ -146,6 +146,18 @@ Each guest workspace runs one demo. A second build in the same sandbox gets a 40
 
 **Key symbols**: `guestTTL = 10 * time.Minute`, `guestMaxCount = 5`, `allowedGuestKinds`, `guestWords1`, `guestWords2`, `guestSlots`, `SandboxCleanupWorkflow`, `GuestSweepWorkflow`, `buildGuestParams`, `loadGuestWorkspaces`, `copyDemoTLSSecretsWhenReady`, `persistGuestPhase`, `staleGuestSweepThreshold`
 
+### `locations.go` - The sandbox map
+
+`GET /api/guest/locations` serves the pins for the map on the Launchpad home page. The pins come from Loki, which already holds every sandbox launch.
+
+- **Source:** Alloy labels each US sandbox launch in Traefik's access log as `log_type="sandbox"`. The line carries the location Cloudflare adds to the request.
+- **Query:** one fixed LogQL query over the last 365 days. Nothing from a request reaches it.
+- **Privacy:** pins are rounded to one decimal place (about 11 km) and carry no counts.
+- **Refresh:** a background goroutine asks Loki at startup and then every 5 minutes, so a request only reads memory. A failed refresh keeps the last good pins and retries after a minute.
+- **Before the first refresh:** the endpoint answers 503 and the map stays hidden.
+
+**Key symbols**: `sandboxPinsQuery`, `sandboxPinsRefresh`, `sandboxPins.refresh`, `roundedPin`, `handleGuestLocations`
+
 ### `watcher.go` - The eyes on the cluster
 
 Opens a Kubernetes watch stream for all eight platform XR kinds. Each kind gets its own goroutine via `watchResource`. When the watch returns (network drop, API server restart), the goroutine restarts the watch after a short delay.

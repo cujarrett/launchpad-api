@@ -42,6 +42,7 @@ All application code lives in the repo root, with no subdirectories.
 | `broadcaster.go` | Fan-out SSE broadcaster for `GET /api/status/watch` |
 | `sse_ticket.go` | Short-lived, single-use tickets that let the browser open the SSE stream |
 | `guest.go` | Guest sandbox handlers under `/api/guest/` |
+| `locations.go` | `GET /api/guest/locations`, the pins for the sandbox map, read from Loki |
 | `validate.go` | Input validation for write requests |
 | `cleanup.go` | Guest sandbox cleanup on Temporal: a durable timer workflow per sandbox, and a sweep on a one-minute schedule |
 
@@ -70,6 +71,7 @@ The API is a thin stateless layer between the Launchpad SPA, GitHub, and Kuberne
 | `GET` | `/api/status/watch` | none (token optional) | SSE stream of live resource status |
 | `POST` | `/api/status/watch/ticket` | Bearer token | Trade the token for a single-use SSE ticket |
 | `GET` | `/metrics` | none | Prometheus metrics |
+| `GET` | `/api/guest/locations` | none | Pins for the sandbox map on the Launchpad home page |
 | `GET`, `POST`, `PATCH` | `/api/guest/workspaces/...` | none, capped | Guest sandbox routes. The caps are in [README → Guest sandbox](./README.md#guest-sandbox) |
 
 ## Environment Variables
