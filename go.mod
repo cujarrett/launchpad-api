@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.24.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0
-	github.com/MicahParks/keyfunc/v3 v3.9.1
+	github.com/MicahParks/keyfunc/v3 v3.9.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/stretchr/testify v1.12.1
 	go.temporal.io/api v1.64.3
