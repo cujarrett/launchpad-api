@@ -150,7 +150,6 @@ func TestRenderResource_Injection(t *testing.T) {
 		"nel":       {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "foo\u0085evil: x"}},
 		"separator": {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "foo\u2028evil: x"}},
 		"list item": {Kind: "Topic", Name: "a", Params: map[string]any{"namespace": "dev", "streamName": "S", "subjects": []any{"a\n---\nkind: RoleBinding"}}},
-		"map value": {Kind: "Api", Name: "a", Params: map[string]any{"namespace": "dev", "image": "i", "secretRef": map[string]any{"name": "s\n    evil: x"}}},
 	}
 	for name, req := range cases {
 		t.Run(name, func(t *testing.T) {

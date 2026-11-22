@@ -133,10 +133,6 @@ spec:
     subscriptionRef:
       name: {{ .Params.subscriptionRef | q }}
 {{- end }}
-{{- if .Params.secretRef }}
-    secretRef:
-      name: {{ index .Params.secretRef "name" | q }}
-{{- end }}
 {{- if .Params.cache }}
     cache:
       enabled: true
@@ -182,9 +178,6 @@ metadata:
 spec:
   parameters:
     dataRetention: {{ or .Params.dataRetention "delete" | q }}
-{{- if .Params.region }}
-    region: {{ .Params.region | q }}
-{{- end }}
 {{- if .Params.partitionKey }}
     partitionKey: {{ .Params.partitionKey | q }}
 {{- end }}
@@ -201,9 +194,6 @@ metadata:
 spec:
   parameters:
     dataRetention: {{ or .Params.dataRetention "delete" | q }}
-{{- if .Params.region }}
-    region: {{ .Params.region | q }}
-{{- end }}
 `
 
 const topicTemplate = `apiVersion: platform.local.lab/v1alpha1
@@ -220,7 +210,6 @@ spec:
 {{- end }}
     retention: {{ or .Params.retention "limits" | q }}
     maxAge: {{ or .Params.maxAge "720h" | q }}
-    replicas: {{ or .Params.replicas 3 | q }}
 `
 
 const subscriptionTemplate = `apiVersion: platform.local.lab/v1alpha1
@@ -237,7 +226,6 @@ spec:
 {{- end }}
     deliverPolicy: {{ or .Params.deliverPolicy "all" | q }}
     ackPolicy: {{ or .Params.ackPolicy "explicit" | q }}
-    ackWait: {{ or .Params.ackWait "30s" | q }}
 `
 
 const wordpressTemplate = `apiVersion: platform.local.lab/v1alpha1
