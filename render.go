@@ -71,30 +71,6 @@ metadata:
 `, name)
 }
 
-// RenderGuestNamespace renders a guest sandbox namespace.
-//
-// The labels are what admission policy reads; the ApplicationSet cannot set them,
-// because managedNamespaceMetadata only labels a namespace ArgoCD creates itself.
-//
-// The sync-wave puts the Namespace in the last prune wave. A namespace that
-// starts terminating while managed resources still hold finalizers deadlocks,
-// because the provider cannot recreate its ProviderConfigUsage there.
-func RenderGuestNamespace(name string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: Namespace
-metadata:
-  name: %[1]s
-  labels:
-    platform.local.lab/workloads: "true"
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/warn: restricted
-    pod-security.kubernetes.io/audit: restricted
-    istio-injection: enabled
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1"
-`, name)
-}
-
 // ────────────────────────────────────────────────
 // Templates - one per platform resource kind
 // ────────────────────────────────────────────────

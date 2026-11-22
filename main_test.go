@@ -309,21 +309,6 @@ func TestRenderNamespace(t *testing.T) {
 		"kind: Namespace",
 		"name: my-workspace",
 		`platform.local.lab/workloads: "true"`,
-		"istio-injection: enabled",
-		`argocd.argoproj.io/sync-wave: "-1"`,
-	} {
-		if !strings.Contains(yaml, want) {
-			t.Errorf("expected %q in namespace YAML:\n%s", want, yaml)
-		}
-	}
-}
-
-func TestRenderGuestNamespace(t *testing.T) {
-	out := RenderGuestNamespace("guest-phantom-burrito")
-
-	for _, want := range []string{
-		"name: guest-phantom-burrito",
-		`platform.local.lab/workloads: "true"`,
 		// The render check refuses a namespace without these.
 		"pod-security.kubernetes.io/enforce: restricted",
 		"pod-security.kubernetes.io/warn: restricted",
@@ -331,8 +316,8 @@ func TestRenderGuestNamespace(t *testing.T) {
 		"istio-injection: enabled",
 		`argocd.argoproj.io/sync-wave: "-1"`,
 	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("missing %q in:\n%s", want, out)
+		if !strings.Contains(yaml, want) {
+			t.Errorf("expected %q in namespace YAML:\n%s", want, yaml)
 		}
 	}
 }
