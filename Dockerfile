@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o launchpad-api .
 
-FROM ghcr.io/cujarrett/base-distroless:static-debian13@sha256:723f8ed3b1060cf54014601bbb883e79f184bb949dcf85e19b209a69d6979ed9
+FROM ghcr.io/cujarrett/base-distroless:static-debian13@sha256:57d71c4d9e6e68f81b301e7e7b0c500779bce9e35c665334e8c5134822fffc0d
 COPY --from=build /app/launchpad-api /launchpad-api
 EXPOSE 8080
 ENTRYPOINT ["/launchpad-api"]
